@@ -6,7 +6,6 @@ class VariationalFlowConfig:
     latent_dim: int = 8
     kl_weight: float = 1.0
     matching_weight: float = 1.0
-    reconstruction_weight: float = 1.0
     encoder_hidden_sizes: tuple[int, ...] = (128, 128)
     velocity_hidden_sizes: tuple[int, ...] = (128, 128, 128)
 

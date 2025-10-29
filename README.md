@@ -45,8 +45,7 @@ scripts/
 
    - `--variational-latent-dim`: dimensionality of the latent code sampled from the VAE prior (default: 8)
    - `--variational-kl-weight`: weight for the KL divergence between encoder posterior and standard normal prior (default: 1.0)
-   - `--variational-matching-weight`: scales the \(\|v\|^2-\Delta^X\) regularizer (default: 1.0)
-   - `--variational-reconstruction-weight`: scales the reconstruction-style MSE penalty (default: 1.0)
+   - `--variational-matching-weight`: weight for the flow-matching mean-squared error conditioned on the latent code (default: 1.0)
 
 ## Adding New Flow Variants
 

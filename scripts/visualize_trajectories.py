@@ -47,13 +47,7 @@ def parse_args() -> argparse.Namespace:
         "--variational-matching-weight",
         type=float,
         default=1.0,
-        help="Weight for ||v||^2-Δ^X term in VFM",
-    )
-    parser.add_argument(
-        "--variational-reconstruction-weight",
-        type=float,
-        default=1.0,
-        help="Weight for reconstruction-style penalty in VFM",
+        help="Weight for flow-matching loss term in VFM",
     )
     return parser.parse_args()
 
@@ -80,7 +74,6 @@ def main() -> None:
         latent_dim=args.variational_latent_dim,
         kl_weight=args.variational_kl_weight,
         matching_weight=args.variational_matching_weight,
-        reconstruction_weight=args.variational_reconstruction_weight,
     )
 
     output_dir = args.output

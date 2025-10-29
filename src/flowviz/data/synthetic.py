@@ -8,16 +8,23 @@ from .base import PairDataset, SampleBatch
 
 
 class GaussianMixture1D(PairDataset):
-    """1D mixture of Gaussians target distribution with standard normal base."""
+    """1D mixture of Gaussians target distribution with a concentrated base."""
 
-    def __init__(self, means: Sequence[float] = (-2.0, 2.5), std: float = 0.3, seed: int = 42) -> None:
+    def __init__(
+        self,
+        means: Sequence[float] = (-4.0, 4.0),
+        std: float = 0.35,
+        base_std: float = 0.5,
+        seed: int = 42,
+    ) -> None:
         super().__init__(dim=1, seed=seed)
         self.means = torch.tensor(means, dtype=torch.float32)
         self.std = std
+        self.base_std = base_std
 
     def sample_base(self, batch_size: int, device: torch.device) -> torch.Tensor:
         noise = torch.randn(batch_size, 1, generator=self._generator)
-        return noise.to(device)
+        return (self.base_std * noise).to(device)
 
     def sample_target(self, batch_size: int, device: torch.device) -> torch.Tensor:
         component_idx = torch.randint(
@@ -33,21 +40,23 @@ class GaussianMixture1D(PairDataset):
 
 
 class GaussianMixture2D(PairDataset):
-    """2D Gaussian mixture arranged on a square."""
+    """2D Gaussian mixture arranged on a square with separated modes."""
 
     def __init__(
         self,
-        centers: Sequence[Sequence[float]] = ((-2.0, -2.0), (-2.0, 2.0), (2.0, -2.0), (2.5, 2.5)),
-        std: float = 0.35,
+        centers: Sequence[Sequence[float]] = ((-4.0, -4.0), (-4.0, 4.0), (4.0, -4.0), (4.5, 4.5)),
+        std: float = 0.4,
+        base_std: float = 0.6,
         seed: int = 42,
     ) -> None:
         super().__init__(dim=2, seed=seed)
         self.centers = torch.tensor(centers, dtype=torch.float32)
         self.std = std
+        self.base_std = base_std
 
     def sample_base(self, batch_size: int, device: torch.device) -> torch.Tensor:
         noise = torch.randn(batch_size, 2, generator=self._generator)
-        return noise.to(device)
+        return (self.base_std * noise).to(device)
 
     def sample_target(self, batch_size: int, device: torch.device) -> torch.Tensor:
         component_idx = torch.randint(

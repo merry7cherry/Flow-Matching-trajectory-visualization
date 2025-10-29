@@ -32,7 +32,6 @@ class ExperimentArtifacts:
 class VariationalTrainingHistory:
     total_losses: List[float]
     matching_losses: List[float]
-    reconstruction_losses: List[float]
     kl_losses: List[float]
 
 
@@ -122,13 +121,11 @@ def train_variational_flow_matching(
 
     total_history: List[float] = []
     matching_history: List[float] = []
-    reconstruction_history: List[float] = []
     kl_history: List[float] = []
 
     for _ in range(training_config.epochs):
         epoch_total = 0.0
         epoch_matching = 0.0
-        epoch_reconstruction = 0.0
         epoch_kl = 0.0
 
         for _ in range(training_config.steps_per_epoch):
@@ -144,11 +141,7 @@ def train_variational_flow_matching(
 
             predicted_velocity = velocity_model(xt, t, z)
 
-            velocity_norm = predicted_velocity.pow(2).sum(dim=1).mean()
-            delta_x = target_velocity.pow(2).sum(dim=1).mean()
-            matching_loss = velocity_norm - delta_x
-
-            reconstruction_loss = F.mse_loss(predicted_velocity, target_velocity)
+            matching_loss = F.mse_loss(predicted_velocity, target_velocity)
 
             kl_loss = 0.5 * torch.mean(
                 torch.sum(torch.exp(logvar) + mean.pow(2) - 1.0 - logvar, dim=1)
@@ -156,7 +149,6 @@ def train_variational_flow_matching(
 
             loss = (
                 variational_config.matching_weight * matching_loss
-                + variational_config.reconstruction_weight * reconstruction_loss
                 + variational_config.kl_weight * kl_loss
             )
 
@@ -166,19 +158,16 @@ def train_variational_flow_matching(
 
             epoch_total += loss.item()
             epoch_matching += matching_loss.item()
-            epoch_reconstruction += reconstruction_loss.item()
             epoch_kl += kl_loss.item()
 
         steps = max(1, training_config.steps_per_epoch)
         total_history.append(epoch_total / steps)
         matching_history.append(epoch_matching / steps)
-        reconstruction_history.append(epoch_reconstruction / steps)
         kl_history.append(epoch_kl / steps)
 
     history = VariationalTrainingHistory(
         total_losses=total_history,
         matching_losses=matching_history,
-        reconstruction_losses=reconstruction_history,
         kl_losses=kl_history,
     )
 
