@@ -34,6 +34,12 @@ class PairDataset(ABC):
         x1 = self.sample_target(batch_size, device)
         return SampleBatch(x0=x0, x1=x1)
 
+    def reset_rng(self, seed: int | None = None) -> None:
+        """Reset the internal RNG to a deterministic state."""
+
+        new_seed = self.seed if seed is None else seed
+        self._generator = torch.Generator(device="cpu").manual_seed(new_seed)
+
 
 class EmpiricalPairDataset(PairDataset):
     """Dataset backed by pre-computed (x0, x1) pairs."""

@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import torch
 
 from flowviz.config import (
@@ -21,8 +20,12 @@ from flowviz.pipelines.flow_matching import (
     train_rectified_flow,
     train_variational_flow_matching,
 )
-from flowviz.seed import seed_all
-from flowviz.visualization.plotting import plot_1d_trajectories, plot_2d_trajectories, save_figure
+from flowviz.seed import create_generator, seed_all
+from flowviz.visualization.plotting import (
+    create_1d_trajectory_figure,
+    create_2d_trajectory_figure,
+    save_figure,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,7 +40,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--integrator-steps", type=int, default=60, help="Number of ODE steps for Euler integration")
     parser.add_argument("--rectified-samples", type=int, default=6000, help="Samples for rectified dataset")
     parser.add_argument("--rectified-batch", type=int, default=512, help="Batch size during rectified dataset generation")
-    parser.add_argument("--eval-samples", type=int, default=256, help="Evaluation samples for plotting")
+    parser.add_argument("--eval-samples", type=int, default=1024, help="Evaluation samples for plotting")
     parser.add_argument("--variational-latent-dim", type=int, default=8, help="Latent dimensionality for VFM")
     parser.add_argument("--variational-kl-weight", type=float, default=1.0, help="KL divergence weight for VFM")
     parser.add_argument(
@@ -90,8 +93,10 @@ def main() -> None:
 
     for key, dataset in datasets.items():
         print(f"Training standard flow matching for {key} dataset...")
+        dataset.reset_rng(args.seed)
         fm_artifacts = train_flow_matching(dataset, training_config)
 
+        dataset.reset_rng(args.seed)
         eval_batch = dataset.sample_pairs(args.eval_samples, device)
         gt_trajectory, times = generate_ground_truth(eval_batch.x0, eval_batch.x1, integrator_config.num_steps)
         predicted_trajectory, _ = compute_model_trajectories(
@@ -99,7 +104,8 @@ def main() -> None:
         )
 
         print(f"Training rectified flow for {key} dataset...")
-        rectified_artifacts, builder = train_rectified_flow(
+        dataset.reset_rng(args.seed)
+        rectified_artifacts, _ = train_rectified_flow(
             fm_artifacts.model,
             dataset,
             training_config,
@@ -107,49 +113,72 @@ def main() -> None:
             rectified_config,
         )
 
-        with torch.no_grad():
-            rectified_targets, _ = builder.build_ground_truth(fm_artifacts.model, eval_batch.x0)
-        rectified_gt_trajectory, _ = generate_ground_truth(eval_batch.x0, rectified_targets, integrator_config.num_steps)
         rectified_predicted, _ = compute_model_trajectories(
             rectified_artifacts.model, eval_batch.x0, device, integrator_config
         )
 
         print(f"Training variational flow matching for {key} dataset...")
+        dataset.reset_rng(args.seed)
         variational_artifacts = train_variational_flow_matching(dataset, training_config, variational_config)
+        inference_generator = create_generator(args.seed, device=device.type)
         variational_predicted, variational_times = compute_variational_trajectories(
             variational_artifacts.velocity_model,
             eval_batch.x0,
             device,
             integrator_config,
             variational_config,
+            generator=inference_generator,
         )
 
         if dataset.dim == 1:
-            fig, axes = plt.subplots(1, 3, figsize=(16, 4))
-            plot_1d_trajectories(axes[0], times, gt_trajectory, predicted_trajectory, "Flow Matching (1D)")
-            plot_1d_trajectories(
-                axes[1], times, rectified_gt_trajectory, rectified_predicted, "Rectified Flow (1D)"
-            )
-            plot_1d_trajectories(
-                axes[2],
-                variational_times,
-                gt_trajectory,
-                variational_predicted,
-                "Variational Flow Matching (1D)",
-            )
+            figures = {
+                "ground_truth": create_1d_trajectory_figure(times, gt_trajectory, "Ground Truth (1D)"),
+                "flow_matching": create_1d_trajectory_figure(
+                    times,
+                    predicted_trajectory,
+                    "Flow Matching (1D)",
+                    reference=gt_trajectory,
+                    reference_times=times,
+                ),
+                "rectified_flow": create_1d_trajectory_figure(
+                    times,
+                    rectified_predicted,
+                    "Rectified Flow (1D)",
+                    reference=gt_trajectory,
+                    reference_times=times,
+                ),
+                "variational_flow": create_1d_trajectory_figure(
+                    variational_times,
+                    variational_predicted,
+                    "Variational Flow Matching (1D)",
+                    reference=gt_trajectory,
+                    reference_times=times,
+                ),
+            }
         else:
-            fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-            plot_2d_trajectories(axes[0], gt_trajectory, predicted_trajectory, "Flow Matching (2D)")
-            plot_2d_trajectories(
-                axes[1], rectified_gt_trajectory, rectified_predicted, "Rectified Flow (2D)"
-            )
-            plot_2d_trajectories(
-                axes[2], gt_trajectory, variational_predicted, "Variational Flow Matching (2D)"
-            )
+            figures = {
+                "ground_truth": create_2d_trajectory_figure(gt_trajectory, "Ground Truth (2D)"),
+                "flow_matching": create_2d_trajectory_figure(
+                    predicted_trajectory,
+                    "Flow Matching (2D)",
+                    reference=gt_trajectory,
+                ),
+                "rectified_flow": create_2d_trajectory_figure(
+                    rectified_predicted,
+                    "Rectified Flow (2D)",
+                    reference=gt_trajectory,
+                ),
+                "variational_flow": create_2d_trajectory_figure(
+                    variational_predicted,
+                    "Variational Flow Matching (2D)",
+                    reference=gt_trajectory,
+                ),
+            }
 
-        filename = output_dir / f"{key}_trajectories.png"
-        save_figure(fig, filename)
-        print(f"Saved visualization to {filename}")
+        for name, fig in figures.items():
+            filename = output_dir / f"{key}_{name}.png"
+            save_figure(fig, filename)
+            print(f"Saved visualization to {filename}")
 
 
 if __name__ == "__main__":
