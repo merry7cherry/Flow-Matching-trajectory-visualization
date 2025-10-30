@@ -191,6 +191,7 @@ def train_variational_mean_flow_matching(
     training_config: TrainingConfig,
     variational_config: VariationalFlowConfig,
 ) -> VariationalMeanExperimentArtifacts:
+    """Train the variational mean flow objective using forward-mode autodiff."""
     device = torch.device(training_config.device)
     objective = VariationalFlowObjective()
 
@@ -225,58 +226,60 @@ def train_variational_mean_flow_matching(
 
         for _ in range(training_config.steps_per_epoch):
             batch = dataset.sample_pairs(training_config.batch_size, device)
-            t = objective.sample_time(training_config.batch_size, device)
-            xt = objective.interpolate(batch.x0, batch.x1, t)
-            base_velocity = batch.x1 - batch.x0
+            time_samples = objective.sample_time(training_config.batch_size, device)
+            interpolated_state = objective.interpolate(batch.x0, batch.x1, time_samples)
+            linear_velocity = batch.x1 - batch.x0
 
-            eps = torch.randn(
-                xt.shape[0],
+            latent_noise = torch.randn(
+                interpolated_state.shape[0],
                 variational_config.latent_dim,
                 device=device,
-                dtype=xt.dtype,
+                dtype=interpolated_state.dtype,
             )
 
-            ones = torch.ones_like(t)
+            unit_time_tangent = torch.ones_like(time_samples)
 
-            zeros_x0 = torch.zeros_like(batch.x0)
-            zeros_x1 = torch.zeros_like(batch.x1)
+            zero_x0_tangent = torch.zeros_like(batch.x0)
+            zero_x1_tangent = torch.zeros_like(batch.x1)
 
-            def encoder_reparameterized(
+            def sample_latent_with_encoder(
                 x0_in: torch.Tensor,
                 x1_in: torch.Tensor,
-                x_in: torch.Tensor,
+                xt_in: torch.Tensor,
                 t_in: torch.Tensor,
             ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-                mean, logvar = encoder(x0_in, x1_in, x_in, t_in)
+                mean, logvar = encoder(x0_in, x1_in, xt_in, t_in)
                 std = torch.exp(0.5 * logvar)
-                z_sample = mean + std * eps
-                return z_sample, mean, logvar
+                latent_sample = mean + std * latent_noise
+                return latent_sample, mean, logvar
 
-            (z, mean, logvar), (dz_dt, _, _) = jvp(
-                encoder_reparameterized,
-                (batch.x0, batch.x1, xt, t),
-                (zeros_x0, zeros_x1, base_velocity, ones),
+            (latent_sample, latent_mean, latent_logvar), (latent_time_derivative, _, _) = jvp(
+                sample_latent_with_encoder,
+                (batch.x0, batch.x1, interpolated_state, time_samples),
+                (zero_x0_tangent, zero_x1_tangent, linear_velocity, unit_time_tangent),
             )
 
-            def velocity_with_latent(
-                x_in: torch.Tensor,
+            def latent_conditioned_velocity(
+                xt_in: torch.Tensor,
                 t_in: torch.Tensor,
                 z_in: torch.Tensor,
             ) -> torch.Tensor:
-                return velocity_model(x_in, t_in, z_in)
+                return velocity_model(xt_in, t_in, z_in)
 
-            predicted_velocity, du_dt = jvp(
-                velocity_with_latent,
-                (xt, t, z),
-                (base_velocity, ones, dz_dt),
+            predicted_velocity, velocity_time_derivative = jvp(
+                latent_conditioned_velocity,
+                (interpolated_state, time_samples, latent_sample),
+                (linear_velocity, unit_time_tangent, latent_time_derivative),
             )
 
-            target_velocity = (base_velocity + (1.0 - t) * du_dt).detach()
+            flow_matching_target = (
+                linear_velocity + (1.0 - time_samples) * velocity_time_derivative
+            ).detach()
 
-            matching_loss = F.mse_loss(predicted_velocity, target_velocity)
+            matching_loss = F.mse_loss(predicted_velocity, flow_matching_target)
 
             kl_loss = 0.5 * torch.mean(
-                torch.sum(torch.exp(logvar) + mean.pow(2) - 1.0 - logvar, dim=1)
+                torch.sum(torch.exp(latent_logvar) + latent_mean.pow(2) - 1.0 - latent_logvar, dim=1)
             )
 
             loss = (
@@ -311,6 +314,8 @@ def train_variational_mean_flow_matching(
 
 
 class _VariationalTrajectoryWrapper(torch.nn.Module):
+    """Wrap the variational velocity network for trajectory integration."""
+
     def __init__(self, model: VariationalVelocityMLP, z: torch.Tensor) -> None:
         super().__init__()
         self.model = model
@@ -321,6 +326,8 @@ class _VariationalTrajectoryWrapper(torch.nn.Module):
 
 
 class _VariationalMeanTrajectoryWrapper(torch.nn.Module):
+    """Wrapper that reuses the variational velocity model for VMF sampling."""
+
     def __init__(self, model: VariationalVelocityMLP, z: torch.Tensor) -> None:
         super().__init__()
         self.model = model
@@ -360,11 +367,11 @@ def compute_variational_mean_trajectories(
     model: VariationalVelocityMLP,
     encoder: VariationalEncoder,
     x0: torch.Tensor,
-    _x1: torch.Tensor,
     device: torch.device,
     integrator_config: IntegratorConfig,
     generator: torch.Generator | None = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Integrate VMF trajectories by sampling the latent code from the prior."""
     model.eval()
     encoder.eval()
     integrator = EulerIntegrator(num_steps=integrator_config.num_steps)

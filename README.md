@@ -7,6 +7,7 @@ This project visualizes flow matching trajectories for 1D and 2D synthetic datas
 - **Standard Flow Matching** with linear interpolation.
 - **Rectified Flow** training using the trajectories produced by the base flow-matching model.
 - **Variational Flow Matching (VFM)** with a latent-conditioned velocity field trained jointly with a variational encoder.
+- **Variational Mean Flow (VMF)** that augments the variational architecture with forward-mode derivatives to match the mean field objective.
 - Modular interfaces for datasets, flow objectives, models, training, simulation, and visualization.
 - Deterministic experiments via a fixed random seed.
 
@@ -41,11 +42,22 @@ scripts/
    ```
 
    Images for the 1D and 2D experiments will be saved under the `outputs/` directory. Use the following optional flags to tune
-   the variational flow experiment:
+   the variational flow experiments:
 
    - `--variational-latent-dim`: dimensionality of the latent code sampled from the VAE prior (default: 8)
    - `--variational-kl-weight`: weight for the KL divergence between encoder posterior and standard normal prior (default: 1.0)
    - `--variational-matching-weight`: weight for the flow-matching mean-squared error conditioned on the latent code (default: 1.0)
+
+## Variational Mean Flow (VMF)
+
+The variational mean flow shares the encoder and latent-conditioned velocity network with VFM, but optimizes the different target
+introduced in the variational mean flow literature. The training loop in `flowviz.pipelines.flow_matching.train_variational_mean_flow_matching`
+computes forward-mode derivatives with `torch.func.jvp` to build the detached flow-matching targets and records the loss terms needed for
+analysis.
+
+To visualize VMF trajectories, use `flowviz.pipelines.flow_matching.compute_variational_mean_trajectories`. The helper samples latent
+codes from the standard normal prior (matching inference-time behaviour) and integrates the velocity field with the Euler integrator,
+producing a tensor of states and their corresponding time stamps that can be plotted with the existing visualization utilities.
 
 ## Adding New Flow Variants
 
