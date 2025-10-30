@@ -363,18 +363,28 @@ def compute_variational_mean_trajectories(
     _x1: torch.Tensor,
     device: torch.device,
     integrator_config: IntegratorConfig,
+    generator: torch.Generator | None = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     model.eval()
     encoder.eval()
     integrator = EulerIntegrator(num_steps=integrator_config.num_steps)
     x0_device = x0.to(device)
     batch_size = x0.shape[0]
-    z = torch.randn(
-        batch_size,
-        encoder.latent_dim,
-        device=device,
-        dtype=x0_device.dtype,
-    )
+    if generator is not None:
+        z = torch.randn(
+            batch_size,
+            encoder.latent_dim,
+            device=device,
+            dtype=x0_device.dtype,
+            generator=generator,
+        )
+    else:
+        z = torch.randn(
+            batch_size,
+            encoder.latent_dim,
+            device=device,
+            dtype=x0_device.dtype,
+        )
     wrapper = _VariationalMeanTrajectoryWrapper(model, z)
     with torch.no_grad():
         trajectory, times = integrator.integrate(wrapper, x0_device, device)
