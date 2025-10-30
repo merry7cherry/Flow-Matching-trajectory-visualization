@@ -41,8 +41,10 @@ scripts/
    PYTHONPATH=src python scripts/visualize_trajectories.py --device cpu
    ```
 
-   Images for the 1D and 2D experiments will be saved under the `outputs/` directory. Use the following optional flags to tune
-   the variational flow experiments:
+   Images for the 1D and 2D experiments will be saved under the `outputs/` directory. The script trains the flow matching,
+   rectified flow, variational flow matching, and variational mean flow baselines so you will find companion figures labelled
+   `flow_matching`, `rectified_flow`, `variational_flow`, and `variational_mean_flow` for each dataset. Use the following optional
+   flags to tune the variational flow experiments:
 
    - `--variational-latent-dim`: dimensionality of the latent code sampled from the VAE prior (default: 8)
    - `--variational-kl-weight`: weight for the KL divergence between encoder posterior and standard normal prior (default: 1.0)

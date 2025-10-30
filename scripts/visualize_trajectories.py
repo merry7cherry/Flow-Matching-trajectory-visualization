@@ -15,10 +15,12 @@ from flowviz.data.synthetic import GaussianMixture1D, GaussianMixture2D
 from flowviz.pipelines.flow_matching import (
     compute_model_trajectories,
     compute_variational_trajectories,
+    compute_variational_mean_trajectories,
     generate_ground_truth,
     train_flow_matching,
     train_rectified_flow,
     train_variational_flow_matching,
+    train_variational_mean_flow_matching,
 )
 from flowviz.seed import create_generator, seed_all
 from flowviz.visualization.plotting import (
@@ -129,6 +131,22 @@ def main() -> None:
             generator=inference_generator,
         )
 
+        print(f"Training variational mean flow matching for {key} dataset...")
+        dataset.reset_rng(args.seed)
+        variational_mean_artifacts = train_variational_mean_flow_matching(
+            dataset,
+            training_config,
+            variational_config,
+        )
+        variational_mean_predicted, variational_mean_times = compute_variational_mean_trajectories(
+            variational_mean_artifacts.velocity_model,
+            variational_mean_artifacts.encoder,
+            eval_batch.x0,
+            device,
+            integrator_config,
+            generator=inference_generator,
+        )
+
         if dataset.dim == 1:
             figures = {
                 "ground_truth": create_1d_trajectory_figure(times, gt_trajectory, "Ground Truth (1D)"),
@@ -156,6 +174,14 @@ def main() -> None:
                     reference_times=times,
                     show_reference=args.show_ground_truth,
                 ),
+                "variational_mean_flow": create_1d_trajectory_figure(
+                    variational_mean_times,
+                    variational_mean_predicted,
+                    "Variational Mean Flow (1D)",
+                    reference=gt_trajectory,
+                    reference_times=times,
+                    show_reference=args.show_ground_truth,
+                ),
             }
         else:
             figures = {
@@ -175,6 +201,12 @@ def main() -> None:
                 "variational_flow": create_2d_trajectory_figure(
                     variational_predicted,
                     "Variational Flow Matching (2D)",
+                    reference=gt_trajectory,
+                    show_reference=args.show_ground_truth,
+                ),
+                "variational_mean_flow": create_2d_trajectory_figure(
+                    variational_mean_predicted,
+                    "Variational Mean Flow (2D)",
                     reference=gt_trajectory,
                     show_reference=args.show_ground_truth,
                 ),
