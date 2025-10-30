@@ -59,7 +59,7 @@ DEFAULT_1D_DATASET = DatasetConfig(
     label="1D Gaussian Mixture",
     dataset_cls=GaussianMixture1D,
     kwargs={
-        "means": (-4.0, 4.0),
+        "means": (-2.0, 2.0),
         "std": 0.35,
         "base_std": 0.5,
     },
