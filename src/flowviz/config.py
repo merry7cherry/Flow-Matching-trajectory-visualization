@@ -81,7 +81,7 @@ WIDE_SOURCE_NARROW_TARGET_1D = DatasetConfig(
     label="1D Wide Source / Narrow Target",
     dataset_cls=GaussianMixture1D,
     kwargs={
-        "means": (-2, 2),
+        "means": (-2.0, 2.0),
         "std": 0.18,
         "base_std": 1.5,
     },
