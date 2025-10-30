@@ -176,7 +176,6 @@ def main() -> None:
         )
         variational_mean_predicted, variational_mean_times = compute_variational_mean_trajectories(
             variational_mean_artifacts.velocity_model,
-            variational_mean_artifacts.encoder,
             eval_batch.x0,
             device,
             integrator_config,
