@@ -366,7 +366,6 @@ def compute_variational_trajectories(
 
 def compute_variational_mean_trajectories(
     model: VariationalVelocityMLP,
-    encoder: VariationalEncoder,
     x0: torch.Tensor,
     device: torch.device,
     integrator_config: IntegratorConfig,
@@ -375,7 +374,6 @@ def compute_variational_mean_trajectories(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Integrate VMF trajectories by sampling the latent code from the prior."""
     model.eval()
-    encoder.eval()
     integrator = EulerIntegrator(num_steps=integrator_config.num_steps)
     x0_device = x0.to(device)
     batch_size = x0.shape[0]
