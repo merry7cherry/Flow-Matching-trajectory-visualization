@@ -76,7 +76,26 @@ def parse_args() -> argparse.Namespace:
         default=False,
         help="Whether to overlay ground-truth trajectories on model visualizations (true or false)",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--max-display-1d",
+        type=int,
+        default=16,
+        help="Maximum number of trajectories to display for 1D visualizations",
+    )
+    parser.add_argument(
+        "--max-display-2d",
+        type=int,
+        default=24,
+        help="Maximum number of trajectories to display for 2D visualizations",
+    )
+    args = parser.parse_args()
+
+    if args.max_display_1d <= 0:
+        parser.error("--max-display-1d must be a positive integer")
+    if args.max_display_2d <= 0:
+        parser.error("--max-display-2d must be a positive integer")
+
+    return args
 
 
 def prepare_training_config(args: argparse.Namespace) -> TrainingConfig:
@@ -185,13 +204,16 @@ def main() -> None:
 
         if dataset.dim == 1:
             figures = {
-                "ground_truth": create_1d_trajectory_figure(times, gt_trajectory, "Ground Truth (1D)"),
+                "ground_truth": create_1d_trajectory_figure(
+                    times, gt_trajectory, "Ground Truth (1D)", max_display=args.max_display_1d
+                ),
                 "flow_matching": create_1d_trajectory_figure(
                     times,
                     predicted_trajectory,
                     "Flow Matching (1D)",
                     reference=gt_trajectory,
                     reference_times=times,
+                    max_display=args.max_display_1d,
                     show_reference=args.show_ground_truth,
                 ),
                 "rectified_flow": create_1d_trajectory_figure(
@@ -200,6 +222,7 @@ def main() -> None:
                     "Rectified Flow (1D)",
                     reference=gt_trajectory,
                     reference_times=times,
+                    max_display=args.max_display_1d,
                     show_reference=args.show_ground_truth,
                 ),
                 "variational_flow": create_1d_trajectory_figure(
@@ -208,6 +231,7 @@ def main() -> None:
                     "Variational Flow Matching (1D)",
                     reference=gt_trajectory,
                     reference_times=times,
+                    max_display=args.max_display_1d,
                     show_reference=args.show_ground_truth,
                 ),
                 "variational_mean_flow": create_1d_trajectory_figure(
@@ -216,34 +240,41 @@ def main() -> None:
                     "Variational Mean Flow (1D)",
                     reference=gt_trajectory,
                     reference_times=times,
+                    max_display=args.max_display_1d,
                     show_reference=args.show_ground_truth,
                 ),
             }
         else:
             figures = {
-                "ground_truth": create_2d_trajectory_figure(gt_trajectory, "Ground Truth (2D)"),
+                "ground_truth": create_2d_trajectory_figure(
+                    gt_trajectory, "Ground Truth (2D)", max_display=args.max_display_2d
+                ),
                 "flow_matching": create_2d_trajectory_figure(
                     predicted_trajectory,
                     "Flow Matching (2D)",
                     reference=gt_trajectory,
+                    max_display=args.max_display_2d,
                     show_reference=args.show_ground_truth,
                 ),
                 "rectified_flow": create_2d_trajectory_figure(
                     rectified_predicted,
                     "Rectified Flow (2D)",
                     reference=gt_trajectory,
+                    max_display=args.max_display_2d,
                     show_reference=args.show_ground_truth,
                 ),
                 "variational_flow": create_2d_trajectory_figure(
                     variational_predicted,
                     "Variational Flow Matching (2D)",
                     reference=gt_trajectory,
+                    max_display=args.max_display_2d,
                     show_reference=args.show_ground_truth,
                 ),
                 "variational_mean_flow": create_2d_trajectory_figure(
                     variational_mean_predicted,
                     "Variational Mean Flow (2D)",
                     reference=gt_trajectory,
+                    max_display=args.max_display_2d,
                     show_reference=args.show_ground_truth,
                 ),
             }
