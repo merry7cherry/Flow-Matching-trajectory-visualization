@@ -28,6 +28,17 @@ from flowviz.visualization.plotting import (
 )
 
 
+def _str2bool(value: str) -> bool:
+    truthy = {"yes", "true", "t", "1", "y"}
+    falsy = {"no", "false", "f", "0", "n"}
+    lower = value.lower()
+    if lower in truthy:
+        return True
+    if lower in falsy:
+        return False
+    raise argparse.ArgumentTypeError(f"Invalid boolean value: {value}")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Flow Matching trajectory visualization")
     parser.add_argument("--output", type=Path, default=Path("outputs"), help="Directory for figures")
@@ -48,6 +59,12 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=1.0,
         help="Weight for flow-matching loss term in VFM",
+    )
+    parser.add_argument(
+        "--show-ground-truth",
+        type=_str2bool,
+        default=True,
+        help="Whether to overlay ground-truth trajectories on model visualizations (true or false)",
     )
     return parser.parse_args()
 
@@ -132,6 +149,7 @@ def main() -> None:
                     "Flow Matching (1D)",
                     reference=gt_trajectory,
                     reference_times=times,
+                    show_reference=args.show_ground_truth,
                 ),
                 "rectified_flow": create_1d_trajectory_figure(
                     times,
@@ -139,6 +157,7 @@ def main() -> None:
                     "Rectified Flow (1D)",
                     reference=gt_trajectory,
                     reference_times=times,
+                    show_reference=args.show_ground_truth,
                 ),
                 "variational_flow": create_1d_trajectory_figure(
                     variational_times,
@@ -146,6 +165,7 @@ def main() -> None:
                     "Variational Flow Matching (1D)",
                     reference=gt_trajectory,
                     reference_times=times,
+                    show_reference=args.show_ground_truth,
                 ),
             }
         else:
@@ -155,16 +175,19 @@ def main() -> None:
                     predicted_trajectory,
                     "Flow Matching (2D)",
                     reference=gt_trajectory,
+                    show_reference=args.show_ground_truth,
                 ),
                 "rectified_flow": create_2d_trajectory_figure(
                     rectified_predicted,
                     "Rectified Flow (2D)",
                     reference=gt_trajectory,
+                    show_reference=args.show_ground_truth,
                 ),
                 "variational_flow": create_2d_trajectory_figure(
                     variational_predicted,
                     "Variational Flow Matching (2D)",
                     reference=gt_trajectory,
+                    show_reference=args.show_ground_truth,
                 ),
             }
 

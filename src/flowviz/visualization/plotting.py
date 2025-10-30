@@ -42,8 +42,9 @@ def create_1d_trajectory_figure(
     reference: torch.Tensor | None = None,
     reference_times: torch.Tensor | None = None,
     max_display: int = 16,
+    show_reference: bool = True,
 ) -> plt.Figure:
-    fig, ax = plt.subplots(figsize=(6.5, 4.0))
+    fig, ax = plt.subplots(figsize=(10.0, 6.0))
     indices = _select_indices(trajectories.shape[1], max_display)
 
     times_np = _maybe_numpy(times).numpy()
@@ -67,7 +68,7 @@ def create_1d_trajectory_figure(
         end = ([times_np[-1]], [traj[-1]])
         _plot_endpoint_markers(ax, start, end, is_reference=False, dim=1)
 
-        if reference is not None:
+        if reference is not None and show_reference:
             ref_traj = _maybe_numpy(reference[:, idx, 0]).numpy()
             ax.plot(
                 reference_times_np,
@@ -87,7 +88,7 @@ def create_1d_trajectory_figure(
     ax.set_xlabel("t")
     ax.set_ylabel("x")
     ax.set_title(title)
-    if reference is not None:
+    if reference is not None and show_reference:
         ax.legend(loc="upper left")
     return fig
 
@@ -97,8 +98,9 @@ def create_2d_trajectory_figure(
     title: str,
     reference: torch.Tensor | None = None,
     max_display: int = 24,
+    show_reference: bool = True,
 ) -> plt.Figure:
-    fig, ax = plt.subplots(figsize=(6.5, 5.5))
+    fig, ax = plt.subplots(figsize=(9.0, 8.0))
     indices = _select_indices(trajectories.shape[1], max_display)
 
     reference_label_added = False
@@ -122,7 +124,7 @@ def create_2d_trajectory_figure(
             dim=2,
         )
 
-        if reference is not None:
+        if reference is not None and show_reference:
             ref_traj = _maybe_numpy(reference[:, idx]).numpy()
             ax.plot(
                 ref_traj[:, 0],
@@ -146,7 +148,7 @@ def create_2d_trajectory_figure(
     ax.set_ylabel("y")
     ax.set_title(title)
     ax.axis("equal")
-    if reference is not None:
+    if reference is not None and show_reference:
         ax.legend(loc="upper left")
     return fig
 
@@ -154,7 +156,7 @@ def create_2d_trajectory_figure(
 def save_figure(fig: plt.Figure, output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.tight_layout()
-    fig.savefig(output_path)
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 
