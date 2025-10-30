@@ -6,13 +6,14 @@ from pathlib import Path
 import torch
 
 from flowviz.config import (
+    DATASET_CONFIGS,
+    DatasetConfig,
     IntegratorConfig,
     RectifiedFlowConfig,
     TrainingConfig,
     VariationalFlowConfig,
     VariationalMeanFlowConfig,
 )
-from flowviz.data.synthetic import GaussianMixture1D, GaussianMixture2D
 from flowviz.pipelines.flow_matching import (
     compute_model_trajectories,
     compute_variational_trajectories,
@@ -44,6 +45,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rectified-samples", type=int, default=6000, help="Samples for rectified dataset")
     parser.add_argument("--rectified-batch", type=int, default=512, help="Batch size during rectified dataset generation")
     parser.add_argument("--eval-samples", type=int, default=1024, help="Evaluation samples for plotting")
+    parser.add_argument(
+        "--datasets",
+        nargs="+",
+        default=["1d_default", "2d_default"],
+        choices=sorted(DATASET_CONFIGS.keys()),
+        help="Dataset configurations to train and visualize",
+    )
     parser.add_argument("--variational-latent-dim", type=int, default=8, help="Latent dimensionality for VFM")
     parser.add_argument("--variational-kl-weight", type=float, default=1.0, help="KL divergence weight for VFM")
     parser.add_argument(
@@ -142,13 +150,13 @@ def main() -> None:
     output_dir = args.output
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    datasets = {
-        "1d": GaussianMixture1D(seed=args.seed),
-        "2d": GaussianMixture2D(seed=args.seed),
-    }
+    selected_configs: list[DatasetConfig] = [DATASET_CONFIGS[name] for name in args.datasets]
 
-    for key, dataset in datasets.items():
-        print(f"Training standard flow matching for {key} dataset...")
+    for dataset_config in selected_configs:
+        dataset = dataset_config.create_dataset(args.seed)
+        key = dataset_config.name
+
+        print(f"Training standard flow matching for {dataset_config.label}...")
         dataset.reset_rng(args.seed)
         fm_artifacts = train_flow_matching(dataset, training_config)
 
@@ -159,7 +167,7 @@ def main() -> None:
             fm_artifacts.model, eval_batch.x0, device, integrator_config
         )
 
-        print(f"Training rectified flow for {key} dataset...")
+        print(f"Training rectified flow for {dataset_config.label}...")
         dataset.reset_rng(args.seed)
         rectified_artifacts, _ = train_rectified_flow(
             fm_artifacts.model,
@@ -173,7 +181,7 @@ def main() -> None:
             rectified_artifacts.model, eval_batch.x0, device, integrator_config
         )
 
-        print(f"Training variational flow matching for {key} dataset...")
+        print(f"Training variational flow matching for {dataset_config.label}...")
         dataset.reset_rng(args.seed)
         variational_artifacts = train_variational_flow_matching(dataset, training_config, variational_config)
         inference_generator = create_generator(args.seed, device=device.type)
@@ -186,7 +194,7 @@ def main() -> None:
             generator=inference_generator,
         )
 
-        print(f"Training variational mean flow matching for {key} dataset...")
+        print(f"Training variational mean flow matching for {dataset_config.label}...")
         dataset.reset_rng(args.seed)
         variational_mean_artifacts = train_variational_mean_flow_matching(
             dataset,
