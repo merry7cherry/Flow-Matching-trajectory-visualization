@@ -79,13 +79,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-display-1d",
         type=int,
-        default=16,
+        default=64,
         help="Maximum number of trajectories to display for 1D visualizations",
     )
     parser.add_argument(
         "--max-display-2d",
         type=int,
-        default=24,
+        default=128,
         help="Maximum number of trajectories to display for 2D visualizations",
     )
     args = parser.parse_args()
