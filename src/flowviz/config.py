@@ -11,6 +11,11 @@ class VariationalFlowConfig:
 
 
 @dataclass
+class VariationalMeanFlowConfig(VariationalFlowConfig):
+    """Configuration for training and sampling variational mean flows."""
+
+
+@dataclass
 class TrainingConfig:
     epochs: int = 200
     batch_size: int = 256
