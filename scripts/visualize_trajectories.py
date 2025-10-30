@@ -28,17 +28,6 @@ from flowviz.visualization.plotting import (
 )
 
 
-def _str2bool(value: str) -> bool:
-    truthy = {"yes", "true", "t", "1", "y"}
-    falsy = {"no", "false", "f", "0", "n"}
-    lower = value.lower()
-    if lower in truthy:
-        return True
-    if lower in falsy:
-        return False
-    raise argparse.ArgumentTypeError(f"Invalid boolean value: {value}")
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Flow Matching trajectory visualization")
     parser.add_argument("--output", type=Path, default=Path("outputs"), help="Directory for figures")
@@ -62,8 +51,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--show-ground-truth",
-        type=_str2bool,
-        default=True,
+        type=bool,
+        default=False,
         help="Whether to overlay ground-truth trajectories on model visualizations (true or false)",
     )
     return parser.parse_args()
