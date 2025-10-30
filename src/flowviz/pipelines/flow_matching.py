@@ -321,22 +321,13 @@ class _VariationalTrajectoryWrapper(torch.nn.Module):
 
 
 class _VariationalMeanTrajectoryWrapper(torch.nn.Module):
-    def __init__(
-        self,
-        model: VariationalVelocityMLP,
-        encoder: VariationalEncoder,
-        x0: torch.Tensor,
-        x1: torch.Tensor,
-    ) -> None:
+    def __init__(self, model: VariationalVelocityMLP, z: torch.Tensor) -> None:
         super().__init__()
         self.model = model
-        self.encoder = encoder
-        self.register_buffer("x0", x0)
-        self.register_buffer("x1", x1)
+        self.z = z
 
     def forward(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
-        mean, _ = self.encoder(self.x0, self.x1, x, t)
-        return self.model(x, t, mean)
+        return self.model(x, t, self.z)
 
 
 def compute_variational_trajectories(
@@ -369,7 +360,7 @@ def compute_variational_mean_trajectories(
     model: VariationalVelocityMLP,
     encoder: VariationalEncoder,
     x0: torch.Tensor,
-    x1: torch.Tensor,
+    _x1: torch.Tensor,
     device: torch.device,
     integrator_config: IntegratorConfig,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -377,13 +368,14 @@ def compute_variational_mean_trajectories(
     encoder.eval()
     integrator = EulerIntegrator(num_steps=integrator_config.num_steps)
     x0_device = x0.to(device)
-    x1_device = x1.to(device)
-    wrapper = _VariationalMeanTrajectoryWrapper(
-        model,
-        encoder,
-        x0_device,
-        x1_device,
+    batch_size = x0.shape[0]
+    z = torch.randn(
+        batch_size,
+        encoder.latent_dim,
+        device=device,
+        dtype=x0_device.dtype,
     )
+    wrapper = _VariationalMeanTrajectoryWrapper(model, z)
     with torch.no_grad():
         trajectory, times = integrator.integrate(wrapper, x0_device, device)
     return trajectory, times
