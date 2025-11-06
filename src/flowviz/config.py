@@ -110,12 +110,12 @@ EIGHT_GAUSSIANS_TO_MOONS = DatasetConfig(
     label="2D Eight Gaussians to Moons",
     dataset_cls=EightGaussianToMoonDataset,
     kwargs={
-        "source_radius": 6.0,
+        "source_radius": 8.0,
         "source_std": 0.35,
-        "target_radius": 3.0,
-        "target_offset": 1.2,
-        "target_vertical_shift": 0.4,
-        "target_std": 0.18,
+        "target_radius": 2.5,
+        "target_horizontal_gap": 2.5,
+        "target_vertical_gap": 1.5,
+        "target_std": 0.15,
     },
 )
 

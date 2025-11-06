@@ -77,12 +77,12 @@ class EightGaussianToMoonDataset(PairDataset):
 
     def __init__(
         self,
-        source_radius: float = 6.0,
+        source_radius: float = 8.0,
         source_std: float = 0.35,
-        target_radius: float = 3.0,
-        target_offset: float = 1.2,
-        target_vertical_shift: float = 0.4,
-        target_std: float = 0.18,
+        target_radius: float = 2.5,
+        target_horizontal_gap: float | None = None,
+        target_vertical_gap: float = 1.5,
+        target_std: float = 0.15,
         seed: int = 42,
     ) -> None:
         super().__init__(dim=2, seed=seed)
@@ -99,9 +99,16 @@ class EightGaussianToMoonDataset(PairDataset):
         )
         self.source_std = source_std
         self.target_radius = target_radius
-        self.target_offset = target_offset
-        self.target_vertical_shift = target_vertical_shift
+        horizontal_gap = target_radius if target_horizontal_gap is None else target_horizontal_gap
+        self.target_horizontal_gap = horizontal_gap
+        self.target_vertical_gap = target_vertical_gap
         self.target_std = target_std
+        self.upper_center = torch.tensor(
+            (-horizontal_gap / 2.0, target_vertical_gap / 2.0), dtype=torch.float32
+        )
+        self.lower_center = torch.tensor(
+            (horizontal_gap / 2.0, -target_vertical_gap / 2.0), dtype=torch.float32
+        )
 
     def sample_base(self, batch_size: int, device: torch.device) -> torch.Tensor:
         component_idx = torch.randint(
@@ -127,17 +134,14 @@ class EightGaussianToMoonDataset(PairDataset):
         cos_theta = torch.cos(theta)
         sin_theta = torch.sin(theta)
 
-        upper_moon = torch.stack(
-            (self.target_radius * cos_theta, self.target_radius * sin_theta),
-            dim=1,
-        )
+        arc = torch.stack((self.target_radius * cos_theta, self.target_radius * sin_theta), dim=1)
+        upper_center = self.upper_center.to(device=arc.device, dtype=arc.dtype)
+        lower_center = self.lower_center.to(device=arc.device, dtype=arc.dtype)
+        upper_moon = arc + upper_center
         lower_moon = torch.stack(
-            (
-                self.target_radius * cos_theta + self.target_offset,
-                -self.target_radius * sin_theta - self.target_vertical_shift,
-            ),
+            (self.target_radius * cos_theta, -self.target_radius * sin_theta),
             dim=1,
-        )
+        ) + lower_center
 
         samples = torch.where(component_idx.unsqueeze(1) == 0, upper_moon, lower_moon)
         noise = torch.randn(batch_size, 2, generator=self._generator) * self.target_std
