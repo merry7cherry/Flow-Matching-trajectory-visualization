@@ -31,4 +31,21 @@ class VelocityMLP(nn.Module):
         return self.mlp(torch.cat((x_flat, t_flat), dim=1))
 
 
-__all__ = ["VelocityMLP"]
+class MeanVelocityMLP(nn.Module):
+    """Velocity network that conditions on both t and the offset h = t - r."""
+
+    def __init__(self, dim: int, hidden_sizes: list[int] | None = None) -> None:
+        super().__init__()
+        hidden_sizes = hidden_sizes or [128, 128, 128]
+        layer_sizes = [dim + 2, *hidden_sizes, dim]
+        self.mlp = MLP(layer_sizes)
+
+    def forward(self, x: torch.Tensor, t: torch.Tensor, h: torch.Tensor) -> torch.Tensor:
+        x_flat = x.view(x.shape[0], -1)
+        t_flat = t.view(t.shape[0], -1)
+        h_flat = h.view(h.shape[0], -1)
+        velocity = self.mlp(torch.cat((x_flat, t_flat, h_flat), dim=1))
+        return velocity.reshape_as(x)
+
+
+__all__ = ["VelocityMLP", "MeanVelocityMLP"]

@@ -5,6 +5,7 @@ This project visualizes flow matching trajectories for 1D and 2D synthetic datas
 ## Features
 
 - **Standard Flow Matching** with linear interpolation.
+- **Mean Flow** objective with an additional time parameter \(r\) and forward-mode differentiation during training.
 - **Rectified Flow** training using the trajectories produced by the base flow-matching model.
 - **Variational Flow Matching (VFM)** with a latent-conditioned velocity field trained jointly with a variational encoder.
 - **Variational Mean Flow (VMF)** that augments the variational architecture with forward-mode derivatives to match the mean field objective.
@@ -42,8 +43,8 @@ scripts/
    ```
 
    Images for the 1D and 2D experiments will be saved under the `outputs/` directory. The script trains the flow matching,
-   rectified flow, variational flow matching, and variational mean flow baselines so you will find companion figures labelled
-   `flow_matching`, `rectified_flow`, `variational_flow`, and `variational_mean_flow` for each dataset. Use the following optional
+   mean flow, rectified flow, variational flow matching, and variational mean flow baselines so you will find companion figures
+   labelled `flow_matching`, `mean_flow`, `rectified_flow`, `variational_flow`, and `variational_mean_flow` for each dataset. Use the following optional
    flags to tune the variational flow experiments:
 
    - `--variational-latent-dim`: dimensionality of the latent code sampled from the VAE prior (default: 8)
@@ -52,6 +53,15 @@ scripts/
    - `--variational-mean-latent-dim`: optional latent dimensionality override for VMF (defaults to the VFM setting)
    - `--variational-mean-kl-weight`: optional KL divergence weight override for VMF (defaults to the VFM setting)
    - `--variational-mean-matching-weight`: optional matching loss weight override for VMF (defaults to the VFM setting)
+
+## Mean Flow
+
+The mean flow extends the standard flow-matching setup by sampling a pair of times \(t, r\) such that \(t \geq r\), computing the
+offset \(h = t - r\), and predicting the velocity conditioned on \((t, h)\). The training procedure implemented in
+`flowviz.pipelines.flow_matching.train_mean_flow_matching` uses `torch.func.jvp` to obtain forward-mode derivatives and constructs
+the detached targets described by the mean flow objective, including the adaptive weighting term for stability. Trajectories for
+visualization are generated via `flowviz.pipelines.flow_matching.compute_mean_flow_trajectories`, which now evaluates the network
+once at \(t = 1, r = 0\) and maps each base sample directly to its prediction, enabling one-step generation without ODE integration.
 
 ## Variational Mean Flow (VMF)
 

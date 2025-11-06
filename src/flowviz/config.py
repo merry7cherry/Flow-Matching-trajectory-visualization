@@ -20,6 +20,20 @@ class VariationalMeanFlowConfig(VariationalFlowConfig):
 
 
 @dataclass
+class MeanFlowConfig:
+    """Hyper-parameters for training the mean flow objective."""
+
+    velocity_hidden_sizes: tuple[int, ...] = (128, 128, 128)
+    P_mean_t: float = 0.0
+    P_std_t: float = 1.0
+    P_mean_r: float = 0.0
+    P_std_r: float = 1.0
+    ratio: float = 0.5
+    norm_eps: float = 1e-4
+    norm_p: float = 0.5
+
+
+@dataclass
 class TrainingConfig:
     epochs: int = 200
     batch_size: int = 256
@@ -134,6 +148,7 @@ DATASET_CONFIGS: Dict[str, DatasetConfig] = {
 __all__ = [
     "VariationalFlowConfig",
     "VariationalMeanFlowConfig",
+    "MeanFlowConfig",
     "TrainingConfig",
     "IntegratorConfig",
     "RectifiedFlowConfig",

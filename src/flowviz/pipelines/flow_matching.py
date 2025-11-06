@@ -13,12 +13,14 @@ from ..config import (
     TrainingConfig,
     VariationalFlowConfig,
     VariationalMeanFlowConfig,
+    MeanFlowConfig,
 )
 from ..data.base import PairDataset
 from ..flows.linear import LinearInterpolationFlow
 from ..flows.rectified import RectifiedFlowBuilder
 from ..flows.variational import VariationalFlowObjective
-from ..models.mlp import VelocityMLP
+from ..flows.time_sampling import sample_two_timesteps_t_r_v1
+from ..models.mlp import MeanVelocityMLP, VelocityMLP
 from ..models.variational import VariationalEncoder, VariationalVelocityMLP
 from ..simulation.integrators import EulerIntegrator
 from ..training.trainer import TrainingHistory, train_model
@@ -51,6 +53,12 @@ class VariationalMeanExperimentArtifacts:
     history: VariationalTrainingHistory
 
 
+@dataclass
+class MeanFlowExperimentArtifacts:
+    model: MeanVelocityMLP
+    history: TrainingHistory
+
+
 def train_flow_matching(
     dataset: PairDataset,
     training_config: TrainingConfig,
@@ -60,6 +68,69 @@ def train_flow_matching(
     objective = LinearInterpolationFlow()
     history = train_model(model, dataset, objective, training_config)
     return ExperimentArtifacts(model=model, history=history)
+
+
+def train_mean_flow_matching(
+    dataset: PairDataset,
+    training_config: TrainingConfig,
+    mean_config: MeanFlowConfig,
+) -> MeanFlowExperimentArtifacts:
+    """Train the mean flow objective with the (t, r) time parametrization."""
+
+    device = torch.device(training_config.device)
+    model = MeanVelocityMLP(
+        dim=dataset.dim, hidden_sizes=list(mean_config.velocity_hidden_sizes)
+    ).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=training_config.learning_rate)
+
+    losses: List[float] = []
+
+    model.train()
+    for _ in range(training_config.epochs):
+        epoch_loss = 0.0
+        for _ in range(training_config.steps_per_epoch):
+            batch = dataset.sample_pairs(training_config.batch_size, device)
+            t_raw, r_raw = sample_two_timesteps_t_r_v1(
+                mean_config, training_config.batch_size, device
+            )
+            t = t_raw.view(-1, 1)
+            r = r_raw.view(-1, 1)
+
+            x0 = batch.x0
+            x1 = batch.x1
+            z = (1.0 - t) * x1 + t * x0
+            v = x0 - x1
+
+            def u_func(z_in: torch.Tensor, t_in: torch.Tensor, r_in: torch.Tensor) -> torch.Tensor:
+                h_in = t_in - r_in
+                return model(z_in, t_in, h_in)
+
+            dtdt = torch.ones_like(t)
+            drdt = torch.zeros_like(r)
+
+            predicted_velocity, velocity_time_derivative = jvp(
+                u_func,
+                (z, t, r),
+                (v, dtdt, drdt),
+            )
+
+            u_target = (v - (t - r) * velocity_time_derivative).detach()
+            loss_terms = (predicted_velocity - u_target) ** 2
+            loss_terms = loss_terms.view(loss_terms.shape[0], -1).sum(dim=1)
+            adaptive_weight = (loss_terms.detach() + mean_config.norm_eps) ** mean_config.norm_p
+            loss = torch.mean(loss_terms / adaptive_weight)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            epoch_loss += loss.item()
+
+        steps = max(1, training_config.steps_per_epoch)
+        losses.append(epoch_loss / steps)
+
+    history = TrainingHistory(losses=losses)
+    return MeanFlowExperimentArtifacts(model=model, history=history)
 
 
 def generate_ground_truth(
@@ -85,6 +156,31 @@ def compute_model_trajectories(
     integrator = EulerIntegrator(num_steps=integrator_config.num_steps)
     with torch.no_grad():
         trajectory, times = integrator.integrate(model, x0.to(device), device)
+    return trajectory, times
+
+
+def compute_mean_flow_trajectories(
+    model: MeanVelocityMLP,
+    x0: torch.Tensor,
+    device: torch.device,
+    integrator_config: IntegratorConfig,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Generate trajectories with a single mean-flow evaluation at t = 1, r = 0."""
+
+    del integrator_config  # the mean flow uses a one-step sampling rule
+
+    model.eval()
+    with torch.no_grad():
+        base = x0.to(device)
+        batch_size = base.shape[0]
+        t = torch.ones((batch_size, 1), device=device, dtype=base.dtype)
+        r = torch.zeros((batch_size, 1), device=device, dtype=base.dtype)
+        h = t - r
+        update = model(base, t, h)
+        predicted = base - update
+
+    trajectory = torch.stack((base, predicted), dim=0)
+    times = torch.tensor([0.0, 1.0], device=device, dtype=base.dtype)
     return trajectory, times
 
 
@@ -402,13 +498,16 @@ __all__ = [
     "ExperimentArtifacts",
     "VariationalExperimentArtifacts",
     "VariationalMeanExperimentArtifacts",
+    "MeanFlowExperimentArtifacts",
     "VariationalTrainingHistory",
     "train_flow_matching",
+    "train_mean_flow_matching",
     "train_rectified_flow",
     "train_variational_flow_matching",
     "train_variational_mean_flow_matching",
     "generate_ground_truth",
     "compute_model_trajectories",
+    "compute_mean_flow_trajectories",
     "compute_variational_trajectories",
     "compute_variational_mean_trajectories",
 ]

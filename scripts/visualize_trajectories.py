@@ -9,17 +9,20 @@ from flowviz.config import (
     DATASET_CONFIGS,
     DatasetConfig,
     IntegratorConfig,
+    MeanFlowConfig,
     RectifiedFlowConfig,
     TrainingConfig,
     VariationalFlowConfig,
     VariationalMeanFlowConfig,
 )
 from flowviz.pipelines.flow_matching import (
+    compute_mean_flow_trajectories,
     compute_model_trajectories,
     compute_variational_trajectories,
     compute_variational_mean_trajectories,
     generate_ground_truth,
     train_flow_matching,
+    train_mean_flow_matching,
     train_rectified_flow,
     train_variational_flow_matching,
     train_variational_mean_flow_matching,
@@ -130,6 +133,7 @@ def main() -> None:
     training_config = prepare_training_config(args)
     integrator_config = IntegratorConfig(num_steps=args.integrator_steps)
     rectified_config = RectifiedFlowConfig(num_samples=args.rectified_samples, batch_size=args.rectified_batch)
+    mean_flow_config = MeanFlowConfig()
     variational_config = VariationalFlowConfig(
         latent_dim=args.variational_latent_dim,
         kl_weight=args.variational_kl_weight,
@@ -166,11 +170,18 @@ def main() -> None:
         dataset.reset_rng(args.seed)
         fm_artifacts = train_flow_matching(dataset, training_config)
 
+        print(f"Training mean flow for {dataset_config.label}...")
+        dataset.reset_rng(args.seed)
+        mean_flow_artifacts = train_mean_flow_matching(dataset, training_config, mean_flow_config)
+
         dataset.reset_rng(args.seed)
         eval_batch = dataset.sample_pairs(args.eval_samples, device)
         gt_trajectory, times = generate_ground_truth(eval_batch.x0, eval_batch.x1, integrator_config.num_steps)
         predicted_trajectory, _ = compute_model_trajectories(
             fm_artifacts.model, eval_batch.x0, device, integrator_config
+        )
+        mean_predicted, mean_times = compute_mean_flow_trajectories(
+            mean_flow_artifacts.model, eval_batch.x0, device, integrator_config
         )
 
         print(f"Training rectified flow for {dataset_config.label}...")
@@ -230,6 +241,15 @@ def main() -> None:
                     max_display=args.max_display_1d,
                     show_reference=args.show_ground_truth,
                 ),
+                "mean_flow": create_1d_trajectory_figure(
+                    mean_times,
+                    mean_predicted,
+                    "Mean Flow (1D)",
+                    reference=gt_trajectory,
+                    reference_times=times,
+                    max_display=args.max_display_1d,
+                    show_reference=args.show_ground_truth,
+                ),
                 "rectified_flow": create_1d_trajectory_figure(
                     times,
                     rectified_predicted,
@@ -266,6 +286,13 @@ def main() -> None:
                 "flow_matching": create_2d_trajectory_figure(
                     predicted_trajectory,
                     "Flow Matching (2D)",
+                    reference=gt_trajectory,
+                    max_display=args.max_display_2d,
+                    show_reference=args.show_ground_truth,
+                ),
+                "mean_flow": create_2d_trajectory_figure(
+                    mean_predicted,
+                    "Mean Flow (2D)",
                     reference=gt_trajectory,
                     max_display=args.max_display_2d,
                     show_reference=args.show_ground_truth,
