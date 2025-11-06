@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Mapping, Type
 
 from .data.base import PairDataset
-from .data.synthetic import GaussianMixture1D, GaussianMixture2D
+from .data.synthetic import EightGaussianToMoonDataset, GaussianMixture1D, GaussianMixture2D
 
 
 @dataclass
@@ -105,6 +105,20 @@ HEXAGONAL_TARGET_2D = DatasetConfig(
     },
 )
 
+EIGHT_GAUSSIANS_TO_MOONS = DatasetConfig(
+    name="2d_eight_gaussians_to_moons",
+    label="2D Eight Gaussians to Moons",
+    dataset_cls=EightGaussianToMoonDataset,
+    kwargs={
+        "source_radius": 8.0,
+        "source_std": 0.35,
+        "target_radius": 2.5,
+        "target_horizontal_gap": 2.5,
+        "target_vertical_gap": 1.5,
+        "target_std": 0.15,
+    },
+)
+
 DATASET_CONFIGS: Dict[str, DatasetConfig] = {
     cfg.name: cfg
     for cfg in (
@@ -112,6 +126,7 @@ DATASET_CONFIGS: Dict[str, DatasetConfig] = {
         DEFAULT_2D_DATASET,
         WIDE_SOURCE_NARROW_TARGET_1D,
         HEXAGONAL_TARGET_2D,
+        EIGHT_GAUSSIANS_TO_MOONS,
     )
 }
 
@@ -127,5 +142,6 @@ __all__ = [
     "DEFAULT_2D_DATASET",
     "WIDE_SOURCE_NARROW_TARGET_1D",
     "HEXAGONAL_TARGET_2D",
+    "EIGHT_GAUSSIANS_TO_MOONS",
     "DATASET_CONFIGS",
 ]
