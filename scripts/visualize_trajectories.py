@@ -13,16 +13,19 @@ from flowviz.config import (
     TrainingConfig,
     VariationalFlowConfig,
     VariationalMeanFlowConfig,
+    VariationalModifiedMeanFlowConfig,
 )
 from flowviz.pipelines.flow_matching import (
     compute_model_trajectories,
     compute_variational_trajectories,
     compute_variational_mean_trajectories,
+    compute_variational_modified_mean_trajectories,
     generate_ground_truth,
     train_flow_matching,
     train_rectified_flow,
     train_variational_flow_matching,
     train_variational_mean_flow_matching,
+    train_variational_modified_mean_flow_matching,
 )
 from flowviz.seed import create_generator, seed_all
 from flowviz.visualization.plotting import (
@@ -85,6 +88,54 @@ def parse_args() -> argparse.Namespace:
         help="Matching loss weight for VMF (defaults to the VFM weight if omitted)",
     )
     parser.add_argument(
+        "--variational-modified-latent-dim",
+        type=int,
+        default=None,
+        help="Latent dimensionality for modified VMF (defaults to the VMF latent dim if omitted)",
+    )
+    parser.add_argument(
+        "--variational-modified-kl-weight",
+        type=float,
+        default=None,
+        help="KL divergence weight for modified VMF (defaults to the VMF weight if omitted)",
+    )
+    parser.add_argument(
+        "--variational-modified-matching-weight",
+        type=float,
+        default=None,
+        help="Matching loss weight for modified VMF (defaults to the VMF weight if omitted)",
+    )
+    parser.add_argument(
+        "--variational-modified-p-mean-t",
+        type=float,
+        default=-1.2,
+        help="Mean of the logit-normal prior used to sample t in modified VMF",
+    )
+    parser.add_argument(
+        "--variational-modified-p-std-t",
+        type=float,
+        default=1.2,
+        help="Standard deviation of the logit-normal prior used to sample t in modified VMF",
+    )
+    parser.add_argument(
+        "--variational-modified-p-mean-r",
+        type=float,
+        default=-1.2,
+        help="Mean of the logit-normal prior used to sample r in modified VMF",
+    )
+    parser.add_argument(
+        "--variational-modified-p-std-r",
+        type=float,
+        default=1.2,
+        help="Standard deviation of the logit-normal prior used to sample r in modified VMF",
+    )
+    parser.add_argument(
+        "--variational-modified-ratio",
+        type=float,
+        default=0.5,
+        help="Probability of sampling distinct timesteps in modified VMF",
+    )
+    parser.add_argument(
         "--show-ground-truth",
         type=bool,
         default=False,
@@ -108,6 +159,8 @@ def parse_args() -> argparse.Namespace:
         parser.error("--max-display-1d must be a positive integer")
     if args.max_display_2d <= 0:
         parser.error("--max-display-2d must be a positive integer")
+    if not 0.0 <= args.variational_modified_ratio <= 1.0:
+        parser.error("--variational-modified-ratio must lie in [0, 1]")
 
     return args
 
@@ -151,6 +204,28 @@ def main() -> None:
             if args.variational_mean_matching_weight is not None
             else args.variational_matching_weight
         ),
+    )
+    variational_modified_config = VariationalModifiedMeanFlowConfig(
+        latent_dim=(
+            args.variational_modified_latent_dim
+            if args.variational_modified_latent_dim is not None
+            else variational_mean_config.latent_dim
+        ),
+        kl_weight=(
+            args.variational_modified_kl_weight
+            if args.variational_modified_kl_weight is not None
+            else variational_mean_config.kl_weight
+        ),
+        matching_weight=(
+            args.variational_modified_matching_weight
+            if args.variational_modified_matching_weight is not None
+            else variational_mean_config.matching_weight
+        ),
+        p_mean_t=args.variational_modified_p_mean_t,
+        p_std_t=args.variational_modified_p_std_t,
+        p_mean_r=args.variational_modified_p_mean_r,
+        p_std_r=args.variational_modified_p_std_r,
+        ratio=args.variational_modified_ratio,
     )
 
     output_dir = args.output
@@ -216,6 +291,24 @@ def main() -> None:
             generator=inference_generator,
         )
 
+        print(f"Training variational modified mean flow matching for {dataset_config.label}...")
+        dataset.reset_rng(args.seed)
+        variational_modified_artifacts = train_variational_modified_mean_flow_matching(
+            dataset,
+            training_config,
+            variational_modified_config,
+        )
+        variational_modified_predicted, variational_modified_times = (
+            compute_variational_modified_mean_trajectories(
+                variational_modified_artifacts.velocity_model,
+                eval_batch.x0,
+                device,
+                integrator_config,
+                variational_modified_config,
+                generator=inference_generator,
+            )
+        )
+
         if dataset.dim == 1:
             figures = {
                 "ground_truth": create_1d_trajectory_figure(
@@ -257,6 +350,15 @@ def main() -> None:
                     max_display=args.max_display_1d,
                     show_reference=args.show_ground_truth,
                 ),
+                "variational_modified_mean_flow": create_1d_trajectory_figure(
+                    variational_modified_times,
+                    variational_modified_predicted,
+                    "Variational Modified Mean Flow (1D)",
+                    reference=gt_trajectory,
+                    reference_times=times,
+                    max_display=args.max_display_1d,
+                    show_reference=args.show_ground_truth,
+                ),
             }
         else:
             figures = {
@@ -287,6 +389,13 @@ def main() -> None:
                 "variational_mean_flow": create_2d_trajectory_figure(
                     variational_mean_predicted,
                     "Variational Mean Flow (2D)",
+                    reference=gt_trajectory,
+                    max_display=args.max_display_2d,
+                    show_reference=args.show_ground_truth,
+                ),
+                "variational_modified_mean_flow": create_2d_trajectory_figure(
+                    variational_modified_predicted,
+                    "Variational Modified Mean Flow (2D)",
                     reference=gt_trajectory,
                     max_display=args.max_display_2d,
                     show_reference=args.show_ground_truth,

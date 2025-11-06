@@ -13,6 +13,7 @@ from ..config import (
     TrainingConfig,
     VariationalFlowConfig,
     VariationalMeanFlowConfig,
+    VariationalModifiedMeanFlowConfig,
 )
 from ..data.base import PairDataset
 from ..flows.linear import LinearInterpolationFlow
@@ -20,7 +21,12 @@ from ..flows.rectified import RectifiedFlowBuilder
 from ..flows.variational import VariationalFlowObjective
 from ..models.mlp import VelocityMLP
 from ..models.variational import VariationalEncoder, VariationalVelocityMLP
+from ..models.variational_modified import (
+    VariationalModifiedEncoder,
+    VariationalModifiedVelocityMLP,
+)
 from ..simulation.integrators import EulerIntegrator
+from ..training.time_samplers import sample_two_timesteps_t_r_v1
 from ..training.trainer import TrainingHistory, train_model
 
 
@@ -48,6 +54,13 @@ class VariationalExperimentArtifacts:
 class VariationalMeanExperimentArtifacts:
     velocity_model: VariationalVelocityMLP
     encoder: VariationalEncoder
+    history: VariationalTrainingHistory
+
+
+@dataclass
+class VariationalModifiedMeanExperimentArtifacts:
+    velocity_model: VariationalModifiedVelocityMLP
+    encoder: VariationalModifiedEncoder
     history: VariationalTrainingHistory
 
 
@@ -314,6 +327,140 @@ def train_variational_mean_flow_matching(
     )
 
 
+def train_variational_modified_mean_flow_matching(
+    dataset: PairDataset,
+    training_config: TrainingConfig,
+    variational_config: VariationalModifiedMeanFlowConfig,
+) -> VariationalModifiedMeanExperimentArtifacts:
+    """Train the modified VMF objective with auxiliary time samples."""
+
+    device = torch.device(training_config.device)
+    objective = VariationalFlowObjective()
+
+    velocity_model = VariationalModifiedVelocityMLP(
+        dim=dataset.dim,
+        latent_dim=variational_config.latent_dim,
+        hidden_sizes=variational_config.velocity_hidden_sizes,
+    ).to(device)
+
+    encoder = VariationalModifiedEncoder(
+        dim=dataset.dim,
+        latent_dim=variational_config.latent_dim,
+        hidden_sizes=variational_config.encoder_hidden_sizes,
+    ).to(device)
+
+    optimizer = torch.optim.Adam(
+        list(velocity_model.parameters()) + list(encoder.parameters()),
+        lr=training_config.learning_rate,
+    )
+
+    total_history: List[float] = []
+    matching_history: List[float] = []
+    kl_history: List[float] = []
+
+    velocity_model.train()
+    encoder.train()
+
+    for _ in range(training_config.epochs):
+        epoch_total = 0.0
+        epoch_matching = 0.0
+        epoch_kl = 0.0
+
+        for _ in range(training_config.steps_per_epoch):
+            batch = dataset.sample_pairs(training_config.batch_size, device)
+            t_samples, r_samples = sample_two_timesteps_t_r_v1(
+                variational_config, training_config.batch_size, device
+            )
+            xt = objective.interpolate(batch.x0, batch.x1, t_samples)
+            linear_velocity = batch.x1 - batch.x0
+
+            latent_noise = torch.randn(
+                xt.shape[0],
+                variational_config.latent_dim,
+                device=device,
+                dtype=xt.dtype,
+            )
+
+            ones = torch.ones_like(t_samples)
+            zeros = torch.zeros_like(t_samples)
+            zero_x0 = torch.zeros_like(batch.x0)
+            zero_x1 = torch.zeros_like(batch.x1)
+
+            def sample_latent_with_encoder(
+                x0_in: torch.Tensor,
+                x1_in: torch.Tensor,
+                xt_in: torch.Tensor,
+                t_in: torch.Tensor,
+                r_in: torch.Tensor,
+            ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+                h_in = t_in - r_in
+                mean, logvar = encoder(x0_in, x1_in, xt_in, t_in, h_in)
+                std = torch.exp(0.5 * logvar)
+                latent_sample = mean + std * latent_noise
+                return latent_sample, mean, logvar
+
+            (latent_sample, latent_mean, latent_logvar), (latent_time_derivative, _, _) = jvp(
+                sample_latent_with_encoder,
+                (batch.x0, batch.x1, xt, t_samples, r_samples),
+                (zero_x0, zero_x1, linear_velocity, ones, zeros),
+            )
+
+            def latent_conditioned_velocity(
+                xt_in: torch.Tensor,
+                t_in: torch.Tensor,
+                r_in: torch.Tensor,
+                z_in: torch.Tensor,
+            ) -> torch.Tensor:
+                h_in = t_in - r_in
+                return velocity_model(xt_in, t_in, h_in, z_in)
+
+            predicted_velocity, velocity_time_derivative = jvp(
+                latent_conditioned_velocity,
+                (xt, t_samples, r_samples, latent_sample),
+                (linear_velocity, ones, zeros, latent_time_derivative),
+            )
+
+            flow_matching_target = (
+                linear_velocity - (t_samples - r_samples) * velocity_time_derivative
+            ).detach()
+
+            matching_loss = F.mse_loss(predicted_velocity, flow_matching_target)
+
+            kl_loss = 0.5 * torch.mean(
+                torch.sum(torch.exp(latent_logvar) + latent_mean.pow(2) - 1.0 - latent_logvar, dim=1)
+            )
+
+            loss = (
+                variational_config.matching_weight * matching_loss
+                + variational_config.kl_weight * kl_loss
+            )
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            epoch_total += loss.item()
+            epoch_matching += matching_loss.item()
+            epoch_kl += kl_loss.item()
+
+        steps = max(1, training_config.steps_per_epoch)
+        total_history.append(epoch_total / steps)
+        matching_history.append(epoch_matching / steps)
+        kl_history.append(epoch_kl / steps)
+
+    history = VariationalTrainingHistory(
+        total_losses=total_history,
+        matching_losses=matching_history,
+        kl_losses=kl_history,
+    )
+
+    return VariationalModifiedMeanExperimentArtifacts(
+        velocity_model=velocity_model,
+        encoder=encoder,
+        history=history,
+    )
+
+
 class _VariationalTrajectoryWrapper(torch.nn.Module):
     """Wrap the variational velocity network for trajectory integration."""
 
@@ -336,6 +483,20 @@ class _VariationalMeanTrajectoryWrapper(torch.nn.Module):
 
     def forward(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
         return self.model(x, t, self.z)
+
+
+class _VariationalModifiedTrajectoryWrapper(torch.nn.Module):
+    """Wrapper for the modified VMF velocity field during sampling."""
+
+    def __init__(self, model: VariationalModifiedVelocityMLP, z: torch.Tensor) -> None:
+        super().__init__()
+        self.model = model
+        self.z = z
+
+    def forward(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
+        # During sampling we set the auxiliary time r to zero, so h = t.
+        h = t
+        return self.model(x, t, h, self.z)
 
 
 def compute_variational_trajectories(
@@ -398,17 +559,55 @@ def compute_variational_mean_trajectories(
     return trajectory, times
 
 
+def compute_variational_modified_mean_trajectories(
+    model: VariationalModifiedVelocityMLP,
+    x0: torch.Tensor,
+    device: torch.device,
+    integrator_config: IntegratorConfig,
+    variational_config: VariationalModifiedMeanFlowConfig,
+    generator: torch.Generator | None = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Integrate trajectories for the modified VMF model."""
+
+    model.eval()
+    integrator = EulerIntegrator(num_steps=integrator_config.num_steps)
+    x0_device = x0.to(device)
+    batch_size = x0.shape[0]
+    if generator is not None:
+        z = torch.randn(
+            batch_size,
+            variational_config.latent_dim,
+            device=device,
+            dtype=x0_device.dtype,
+            generator=generator,
+        )
+    else:
+        z = torch.randn(
+            batch_size,
+            variational_config.latent_dim,
+            device=device,
+            dtype=x0_device.dtype,
+        )
+    wrapper = _VariationalModifiedTrajectoryWrapper(model, z)
+    with torch.no_grad():
+        trajectory, times = integrator.integrate(wrapper, x0_device, device)
+    return trajectory, times
+
+
 __all__ = [
     "ExperimentArtifacts",
     "VariationalExperimentArtifacts",
     "VariationalMeanExperimentArtifacts",
+    "VariationalModifiedMeanExperimentArtifacts",
     "VariationalTrainingHistory",
     "train_flow_matching",
     "train_rectified_flow",
     "train_variational_flow_matching",
     "train_variational_mean_flow_matching",
+    "train_variational_modified_mean_flow_matching",
     "generate_ground_truth",
     "compute_model_trajectories",
     "compute_variational_trajectories",
     "compute_variational_mean_trajectories",
+    "compute_variational_modified_mean_trajectories",
 ]

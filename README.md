@@ -8,6 +8,7 @@ This project visualizes flow matching trajectories for 1D and 2D synthetic datas
 - **Rectified Flow** training using the trajectories produced by the base flow-matching model.
 - **Variational Flow Matching (VFM)** with a latent-conditioned velocity field trained jointly with a variational encoder.
 - **Variational Mean Flow (VMF)** that augments the variational architecture with forward-mode derivatives to match the mean field objective.
+- **Variational Modified Mean Flow (VMMF)** extending VMF with an auxiliary timestep sampler and time-conditioned networks.
 - Modular interfaces for datasets, flow objectives, models, training, simulation, and visualization.
 - Deterministic experiments via a fixed random seed.
 
@@ -42,9 +43,9 @@ scripts/
    ```
 
    Images for the 1D and 2D experiments will be saved under the `outputs/` directory. The script trains the flow matching,
-   rectified flow, variational flow matching, and variational mean flow baselines so you will find companion figures labelled
-   `flow_matching`, `rectified_flow`, `variational_flow`, and `variational_mean_flow` for each dataset. Use the following optional
-   flags to tune the variational flow experiments:
+   rectified flow, variational flow matching, variational mean flow, and the modified variational mean flow baselines so you will
+   find companion figures labelled `flow_matching`, `rectified_flow`, `variational_flow`, `variational_mean_flow`, and
+   `variational_modified_mean_flow` for each dataset. Use the following optional flags to tune the variational flow experiments:
 
    - `--variational-latent-dim`: dimensionality of the latent code sampled from the VAE prior (default: 8)
    - `--variational-kl-weight`: weight for the KL divergence between encoder posterior and standard normal prior (default: 1.0)
@@ -52,6 +53,12 @@ scripts/
    - `--variational-mean-latent-dim`: optional latent dimensionality override for VMF (defaults to the VFM setting)
    - `--variational-mean-kl-weight`: optional KL divergence weight override for VMF (defaults to the VFM setting)
    - `--variational-mean-matching-weight`: optional matching loss weight override for VMF (defaults to the VFM setting)
+   - `--variational-modified-latent-dim`: optional latent dimensionality override for the modified VMF (defaults to the VMF setting)
+   - `--variational-modified-kl-weight`: optional KL divergence weight override for the modified VMF (defaults to the VMF setting)
+   - `--variational-modified-matching-weight`: optional matching loss weight override for the modified VMF (defaults to the VMF setting)
+   - `--variational-modified-p-mean-t`, `--variational-modified-p-std-t`: parameters of the logit-normal prior for sampling the main time `t`
+   - `--variational-modified-p-mean-r`, `--variational-modified-p-std-r`: parameters of the logit-normal prior for sampling the auxiliary time `r`
+   - `--variational-modified-ratio`: probability of sampling distinct `(t, r)` pairs (defaults to 0.5)
 
 ## Variational Mean Flow (VMF)
 
@@ -63,6 +70,18 @@ analysis.
 To visualize VMF trajectories, use `flowviz.pipelines.flow_matching.compute_variational_mean_trajectories`. The helper samples latent
 codes from the standard normal prior (matching inference-time behaviour) and integrates the velocity field with the Euler integrator,
 producing a tensor of states and their corresponding time stamps that can be plotted with the existing visualization utilities.
+
+## Variational Modified Mean Flow (VMMF)
+
+The variational modified mean flow extends VMF by sampling two correlated timesteps `(t, r)` from configurable logit-normal
+distributions. Both the encoder and the latent-conditioned velocity model observe the auxiliary difference `h = t - r`, enabling the
+forward-mode autodiff objective to incorporate additional temporal structure. The training loop in
+`flowviz.pipelines.flow_matching.train_variational_modified_mean_flow_matching` mirrors the VMF implementation but swaps the
+detached target for the modified objective `u_tgt = v - (t - r) * \partial_t u`.
+
+Sampling leverages `flowviz.pipelines.flow_matching.compute_variational_modified_mean_trajectories`, which fixes the auxiliary time to
+zero during integration (i.e., `r = 0` so `h = t`). This matches the inference-time behaviour where only the forward time parameter is
+available, producing trajectories ready for visualization with the existing plotting utilities.
 
 ## Adding New Flow Variants
 

@@ -20,6 +20,17 @@ class VariationalMeanFlowConfig(VariationalFlowConfig):
 
 
 @dataclass
+class VariationalModifiedMeanFlowConfig(VariationalMeanFlowConfig):
+    """Configuration for the modified VMF objective with two time samples."""
+
+    p_mean_t: float = -1.2
+    p_std_t: float = 1.2
+    p_mean_r: float = -1.2
+    p_std_r: float = 1.2
+    ratio: float = 0.5
+
+
+@dataclass
 class TrainingConfig:
     epochs: int = 200
     batch_size: int = 256
@@ -134,6 +145,7 @@ DATASET_CONFIGS: Dict[str, DatasetConfig] = {
 __all__ = [
     "VariationalFlowConfig",
     "VariationalMeanFlowConfig",
+    "VariationalModifiedMeanFlowConfig",
     "TrainingConfig",
     "IntegratorConfig",
     "RectifiedFlowConfig",
