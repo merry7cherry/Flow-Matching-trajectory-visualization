@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Sequence
 
 import torch
@@ -71,8 +72,82 @@ class GaussianMixture2D(PairDataset):
         return samples.to(device)
 
 
+class EightGaussianToMoonDataset(PairDataset):
+    """2D dataset mapping an outer ring of Gaussians to an inner two-moon shape."""
+
+    def __init__(
+        self,
+        source_radius: float = 6.0,
+        source_std: float = 0.35,
+        target_radius: float = 3.0,
+        target_offset: float = 1.2,
+        target_vertical_shift: float = 0.4,
+        target_std: float = 0.18,
+        seed: int = 42,
+    ) -> None:
+        super().__init__(dim=2, seed=seed)
+        angles = [2.0 * math.pi * i / 8 for i in range(8)]
+        self.source_centers = torch.tensor(
+            [
+                (
+                    source_radius * math.cos(theta),
+                    source_radius * math.sin(theta),
+                )
+                for theta in angles
+            ],
+            dtype=torch.float32,
+        )
+        self.source_std = source_std
+        self.target_radius = target_radius
+        self.target_offset = target_offset
+        self.target_vertical_shift = target_vertical_shift
+        self.target_std = target_std
+
+    def sample_base(self, batch_size: int, device: torch.device) -> torch.Tensor:
+        component_idx = torch.randint(
+            low=0,
+            high=self.source_centers.shape[0],
+            size=(batch_size,),
+            generator=self._generator,
+        )
+        centers = self.source_centers[component_idx]
+        noise = torch.randn(batch_size, 2, generator=self._generator) * self.source_std
+        samples = centers + noise
+        return samples.to(device)
+
+    def sample_target(self, batch_size: int, device: torch.device) -> torch.Tensor:
+        component_idx = torch.randint(
+            low=0,
+            high=2,
+            size=(batch_size,),
+            generator=self._generator,
+        )
+        theta = torch.rand(batch_size, generator=self._generator) * math.pi
+
+        cos_theta = torch.cos(theta)
+        sin_theta = torch.sin(theta)
+
+        upper_moon = torch.stack(
+            (self.target_radius * cos_theta, self.target_radius * sin_theta),
+            dim=1,
+        )
+        lower_moon = torch.stack(
+            (
+                self.target_radius * cos_theta + self.target_offset,
+                -self.target_radius * sin_theta - self.target_vertical_shift,
+            ),
+            dim=1,
+        )
+
+        samples = torch.where(component_idx.unsqueeze(1) == 0, upper_moon, lower_moon)
+        noise = torch.randn(batch_size, 2, generator=self._generator) * self.target_std
+        samples = samples + noise
+        return samples.to(device)
+
+
 __all__ = [
     "GaussianMixture1D",
     "GaussianMixture2D",
+    "EightGaussianToMoonDataset",
     "SampleBatch",
 ]

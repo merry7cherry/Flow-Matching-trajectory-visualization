@@ -48,7 +48,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--datasets",
         nargs="+",
-        default=["1d_default", "2d_default", "1d_wide_source_narrow_target", "2d_hexagonal_target"],
+        default=[
+            "1d_default",
+            "2d_default",
+            "1d_wide_source_narrow_target",
+            "2d_hexagonal_target",
+            "2d_eight_gaussians_to_moons",
+        ],
         choices=sorted(DATASET_CONFIGS.keys()),
         help="Dataset configurations to train and visualize",
     )
