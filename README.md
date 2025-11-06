@@ -79,9 +79,10 @@ forward-mode autodiff objective to incorporate additional temporal structure. Th
 `flowviz.pipelines.flow_matching.train_variational_modified_mean_flow_matching` mirrors the VMF implementation but swaps the
 detached target for the modified objective `u_tgt = v - (t - r) * \partial_t u`.
 
-Sampling leverages `flowviz.pipelines.flow_matching.compute_variational_modified_mean_trajectories`, which fixes the auxiliary time to
-zero during integration (i.e., `r = 0` so `h = t`). This matches the inference-time behaviour where only the forward time parameter is
-available, producing trajectories ready for visualization with the existing plotting utilities.
+Sampling leverages `flowviz.pipelines.flow_matching.compute_variational_modified_mean_trajectories`, which now performs the analytic
+one-step update `z_0 = z_1 - u(z_1, t = 1, r = 0)` instead of numerically integrating an ODE. The helper evaluates the velocity model
+once with `r = 0`, assembles a two-point trajectory (noise to generated sample), and returns timestamps aligned with the other
+visualization utilities.
 
 ## Adding New Flow Variants
 

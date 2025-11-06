@@ -485,20 +485,6 @@ class _VariationalMeanTrajectoryWrapper(torch.nn.Module):
         return self.model(x, t, self.z)
 
 
-class _VariationalModifiedTrajectoryWrapper(torch.nn.Module):
-    """Wrapper for the modified VMF velocity field during sampling."""
-
-    def __init__(self, model: VariationalModifiedVelocityMLP, z: torch.Tensor) -> None:
-        super().__init__()
-        self.model = model
-        self.z = z
-
-    def forward(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
-        # During sampling we set the auxiliary time r to zero, so h = t.
-        h = t
-        return self.model(x, t, h, self.z)
-
-
 def compute_variational_trajectories(
     model: VariationalVelocityMLP,
     x0: torch.Tensor,
@@ -567,30 +553,46 @@ def compute_variational_modified_mean_trajectories(
     variational_config: VariationalModifiedMeanFlowConfig,
     generator: torch.Generator | None = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Integrate trajectories for the modified VMF model."""
+    """Generate modified VMF trajectories in a single evaluation step."""
+
+    del integrator_config  # the one-step sampler bypasses numerical integration
 
     model.eval()
-    integrator = EulerIntegrator(num_steps=integrator_config.num_steps)
     x0_device = x0.to(device)
-    batch_size = x0.shape[0]
+    batch_size = x0_device.shape[0]
+    dtype = x0_device.dtype
+
     if generator is not None:
-        z = torch.randn(
+        latent = torch.randn(
             batch_size,
             variational_config.latent_dim,
             device=device,
-            dtype=x0_device.dtype,
+            dtype=dtype,
             generator=generator,
         )
     else:
-        z = torch.randn(
+        latent = torch.randn(
             batch_size,
             variational_config.latent_dim,
             device=device,
-            dtype=x0_device.dtype,
+            dtype=dtype,
         )
-    wrapper = _VariationalModifiedTrajectoryWrapper(model, z)
+
+    # The modified objective supports one-step generation by evaluating the
+    # velocity network at t = 1 with the auxiliary time r fixed to zero. This
+    # corresponds to the analytic update z0 = z1 - u(z1, t = 1, r = 0).
+    ones = torch.ones(batch_size, device=device, dtype=dtype)
+    h = ones  # r = 0 -> h = t - r = 1
+
     with torch.no_grad():
-        trajectory, times = integrator.integrate(wrapper, x0_device, device)
+        velocity = model(x0_device, ones, h, latent)
+        x1_pred = x0_device - velocity
+
+    # For visualization we report a two-point trajectory: the initial noise
+    # sample followed by the generated sample. Times are ordered from 0 to 1 to
+    # align with other flow-matching visualisations.
+    trajectory = torch.stack((x0_device, x1_pred), dim=0)
+    times = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
     return trajectory, times
 
 
