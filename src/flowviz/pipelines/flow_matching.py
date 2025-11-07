@@ -163,24 +163,47 @@ def compute_mean_flow_trajectories(
     model: MeanVelocityMLP,
     x0: torch.Tensor,
     device: torch.device,
-    integrator_config: IntegratorConfig,
+    *,
+    steps: int = 1,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Generate trajectories with a single mean-flow evaluation at t = 1, r = 0."""
+    """Generate mean-flow trajectories using uniformly spaced inference steps.
 
-    del integrator_config  # the mean flow uses a one-step sampling rule
+    Args:
+        model: Trained mean-flow velocity network.
+        x0: Batch of base samples to transport.
+        device: Torch device used for evaluation.
+        steps: Number of uniform inference steps between time 0 and 1.
+
+    Returns:
+        Tuple containing the stacked trajectory and the associated time stamps.
+    """
+
+    if steps < 1:
+        raise ValueError("steps must be a positive integer")
 
     model.eval()
     with torch.no_grad():
         base = x0.to(device)
         batch_size = base.shape[0]
-        t = torch.ones((batch_size, 1), device=device, dtype=base.dtype)
-        r = torch.zeros((batch_size, 1), device=device, dtype=base.dtype)
-        h = t - r
-        update = model(base, t, h)
-        predicted = base - update
+        times = torch.linspace(0.0, 1.0, steps + 1, device=device, dtype=base.dtype)
 
-    trajectory = torch.stack((base, predicted), dim=0)
-    times = torch.tensor([0.0, 1.0], device=device, dtype=base.dtype)
+        states = [base]
+        current = base
+
+        for idx in range(steps):
+            current_time = times[idx]
+            evaluation_time = 1.0 - current_time
+            t = torch.ones((batch_size, 1), device=device, dtype=base.dtype) * evaluation_time
+            r = torch.zeros_like(t)
+            h = t - r
+
+            velocity = model(current, t, h)
+            dt = times[idx + 1] - current_time
+            current = current - velocity * dt
+            states.append(current)
+
+        trajectory = torch.stack(states, dim=0)
+
     return trajectory, times
 
 

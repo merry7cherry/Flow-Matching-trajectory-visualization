@@ -45,6 +45,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=256, help="Batch size")
     parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--integrator-steps", type=int, default=60, help="Number of ODE steps for Euler integration")
+    parser.add_argument(
+        "--mean-flow-steps",
+        type=int,
+        default=1,
+        help="Number of uniform inference steps for mean-flow generation",
+    )
     parser.add_argument("--rectified-samples", type=int, default=6000, help="Samples for rectified dataset")
     parser.add_argument("--rectified-batch", type=int, default=512, help="Batch size during rectified dataset generation")
     parser.add_argument("--eval-samples", type=int, default=1024, help="Evaluation samples for plotting")
@@ -111,6 +117,8 @@ def parse_args() -> argparse.Namespace:
         parser.error("--max-display-1d must be a positive integer")
     if args.max_display_2d <= 0:
         parser.error("--max-display-2d must be a positive integer")
+    if args.mean_flow_steps <= 0:
+        parser.error("--mean-flow-steps must be a positive integer")
 
     return args
 
@@ -181,7 +189,10 @@ def main() -> None:
             fm_artifacts.model, eval_batch.x0, device, integrator_config
         )
         mean_predicted, mean_times = compute_mean_flow_trajectories(
-            mean_flow_artifacts.model, eval_batch.x0, device, integrator_config
+            mean_flow_artifacts.model,
+            eval_batch.x0,
+            device,
+            steps=args.mean_flow_steps,
         )
 
         print(f"Training rectified flow for {dataset_config.label}...")

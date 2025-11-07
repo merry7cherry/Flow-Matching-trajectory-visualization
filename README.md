@@ -53,15 +53,17 @@ scripts/
    - `--variational-mean-latent-dim`: optional latent dimensionality override for VMF (defaults to the VFM setting)
    - `--variational-mean-kl-weight`: optional KL divergence weight override for VMF (defaults to the VFM setting)
    - `--variational-mean-matching-weight`: optional matching loss weight override for VMF (defaults to the VFM setting)
+   - `--mean-flow-steps`: number of uniform inference steps used when sampling the mean flow (default: 1)
 
 ## Mean Flow
 
 The mean flow extends the standard flow-matching setup by sampling a pair of times \(t, r\) such that \(t \geq r\), computing the
 offset \(h = t - r\), and predicting the velocity conditioned on \((t, h)\). The training procedure implemented in
 `flowviz.pipelines.flow_matching.train_mean_flow_matching` uses `torch.func.jvp` to obtain forward-mode derivatives and constructs
-the detached targets described by the mean flow objective, including the adaptive weighting term for stability. Trajectories for
-visualization are generated via `flowviz.pipelines.flow_matching.compute_mean_flow_trajectories`, which now evaluates the network
-once at \(t = 1, r = 0\) and maps each base sample directly to its prediction, enabling one-step generation without ODE integration.
+the detached targets described by the mean flow objective, including the adaptive weighting term for stability. During inference,
+`flowviz.pipelines.flow_matching.compute_mean_flow_trajectories` evaluates the network across uniformly spaced time steps between
+0 and 1 (configurable via `--mean-flow-steps`) so you can trade off runtime for fidelity, while still supporting the one-step
+generation path with the default setting.
 
 ## Variational Mean Flow (VMF)
 
