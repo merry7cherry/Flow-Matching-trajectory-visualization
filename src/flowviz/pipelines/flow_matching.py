@@ -12,8 +12,8 @@ from ..config import (
     RectifiedFlowConfig,
     TrainingConfig,
     VariationalFlowConfig,
-    VariationalMeanFlowConfig,
     VariationalForwardMeanFlowConfig,
+    VariationalForwardMeanFlowModifiedConfig,
     MeanFlowConfig,
 )
 from ..data.base import PairDataset
@@ -52,14 +52,14 @@ class VariationalExperimentArtifacts:
 
 
 @dataclass
-class VariationalMeanExperimentArtifacts:
+class VariationalForwardMeanExperimentArtifacts:
     velocity_model: VariationalVelocityMLP
     encoder: VariationalEncoder
     history: VariationalTrainingHistory
 
 
 @dataclass
-class VariationalForwardMeanExperimentArtifacts:
+class VariationalForwardMeanModifiedExperimentArtifacts:
     velocity_model: VariationalVelocityMLP
     encoder: VariationalForwardEncoder
     history: VariationalTrainingHistory
@@ -318,12 +318,12 @@ def train_variational_flow_matching(
     )
 
 
-def train_variational_mean_flow_matching(
+def train_variational_forward_mean_flow_matching(
     dataset: PairDataset,
     training_config: TrainingConfig,
-    variational_config: VariationalMeanFlowConfig,
-) -> VariationalMeanExperimentArtifacts:
-    """Train the variational mean flow objective using forward-mode autodiff."""
+    variational_config: VariationalForwardMeanFlowConfig,
+) -> VariationalForwardMeanExperimentArtifacts:
+    """Train the variational forward mean flow objective using forward-mode autodiff."""
     device = torch.device(training_config.device)
     objective = VariationalFlowObjective()
 
@@ -438,18 +438,18 @@ def train_variational_mean_flow_matching(
         kl_losses=kl_history,
     )
 
-    return VariationalMeanExperimentArtifacts(
+    return VariationalForwardMeanExperimentArtifacts(
         velocity_model=velocity_model,
         encoder=encoder,
         history=history,
     )
 
 
-def train_variational_forward_mean_flow_matching(
+def train_variational_forward_mean_flow_modified_matching(
     dataset: PairDataset,
     training_config: TrainingConfig,
-    variational_config: VariationalForwardMeanFlowConfig,
-) -> VariationalForwardMeanExperimentArtifacts:
+    variational_config: VariationalForwardMeanFlowModifiedConfig,
+) -> VariationalForwardMeanModifiedExperimentArtifacts:
     """Train the modified variational forward mean flow objective."""
 
     device = torch.device(training_config.device)
@@ -551,7 +551,7 @@ def train_variational_forward_mean_flow_matching(
         kl_losses=kl_history,
     )
 
-    return VariationalForwardMeanExperimentArtifacts(
+    return VariationalForwardMeanModifiedExperimentArtifacts(
         velocity_model=velocity_model,
         encoder=encoder,
         history=history,
@@ -570,8 +570,8 @@ class _VariationalTrajectoryWrapper(torch.nn.Module):
         return self.model(x, t, self.z)
 
 
-class _VariationalMeanTrajectoryWrapper(torch.nn.Module):
-    """Wrapper that reuses the variational velocity model for VMF sampling."""
+class _VariationalForwardMeanTrajectoryWrapper(torch.nn.Module):
+    """Wrapper that reuses the variational velocity model for forward mean sampling."""
 
     def __init__(self, model: VariationalVelocityMLP, z: torch.Tensor) -> None:
         super().__init__()
@@ -608,15 +608,15 @@ def compute_variational_trajectories(
     return trajectory, times
 
 
-def compute_variational_mean_trajectories(
+def compute_variational_forward_mean_trajectories(
     model: VariationalVelocityMLP,
     x0: torch.Tensor,
     device: torch.device,
     integrator_config: IntegratorConfig,
-    variational_config: VariationalMeanFlowConfig,
+    variational_config: VariationalForwardMeanFlowConfig,
     generator: torch.Generator | None = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Integrate VMF trajectories by sampling the latent code from the prior."""
+    """Integrate variational forward mean flow trajectories by sampling the latent code from the prior."""
     model.eval()
     integrator = EulerIntegrator(num_steps=integrator_config.num_steps)
     x0_device = x0.to(device)
@@ -636,7 +636,7 @@ def compute_variational_mean_trajectories(
             device=device,
             dtype=x0_device.dtype,
         )
-    wrapper = _VariationalMeanTrajectoryWrapper(model, z)
+    wrapper = _VariationalForwardMeanTrajectoryWrapper(model, z)
     with torch.no_grad():
         trajectory, times = integrator.integrate(wrapper, x0_device, device)
     return trajectory, times
@@ -645,19 +645,19 @@ def compute_variational_mean_trajectories(
 __all__ = [
     "ExperimentArtifacts",
     "VariationalExperimentArtifacts",
-    "VariationalMeanExperimentArtifacts",
     "VariationalForwardMeanExperimentArtifacts",
+    "VariationalForwardMeanModifiedExperimentArtifacts",
     "MeanFlowExperimentArtifacts",
     "VariationalTrainingHistory",
     "train_flow_matching",
     "train_mean_flow_matching",
     "train_rectified_flow",
     "train_variational_flow_matching",
-    "train_variational_mean_flow_matching",
     "train_variational_forward_mean_flow_matching",
+    "train_variational_forward_mean_flow_modified_matching",
     "generate_ground_truth",
     "compute_model_trajectories",
     "compute_mean_flow_trajectories",
     "compute_variational_trajectories",
-    "compute_variational_mean_trajectories",
+    "compute_variational_forward_mean_trajectories",
 ]
