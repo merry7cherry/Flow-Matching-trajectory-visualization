@@ -9,13 +9,13 @@ from torch.func import jvp
 
 from ..config import (
     IntegratorConfig,
+    MeanFlowConfig,
     RectifiedFlowConfig,
     TrainingConfig,
-    VariationalMeanFlowConfig,
     VariationalFlowConfig,
     VariationalForwardMeanFlowConfig,
     VariationalForwardMeanFlowModifiedConfig,
-    MeanFlowConfig,
+    VariationalMeanFlowModifiedConfig,
 )
 from ..data.base import PairDataset
 from ..flows.linear import LinearInterpolationFlow
@@ -54,7 +54,7 @@ class VariationalExperimentArtifacts:
 
 
 @dataclass
-class VariationalMeanExperimentArtifacts:
+class VariationalMeanFlowModifiedExperimentArtifacts:
     velocity_model: VariationalMeanVelocityMLP
     encoder: VariationalForwardEncoder
     history: VariationalTrainingHistory
@@ -154,12 +154,12 @@ def train_mean_flow_matching(
     return MeanFlowExperimentArtifacts(model=model, history=history)
 
 
-def train_variational_mean_flow_matching(
+def train_variational_mean_flow_modified_matching(
     dataset: PairDataset,
     training_config: TrainingConfig,
-    variational_config: VariationalMeanFlowConfig,
-) -> VariationalMeanExperimentArtifacts:
-    """Train the variational mean flow objective with latent conditioning."""
+    variational_config: VariationalMeanFlowModifiedConfig,
+) -> VariationalMeanFlowModifiedExperimentArtifacts:
+    """Train the variational mean flow modified objective with latent conditioning."""
 
     device = torch.device(training_config.device)
     velocity_model = VariationalMeanVelocityMLP(
@@ -263,7 +263,7 @@ def train_variational_mean_flow_matching(
         kl_losses=kl_history,
     )
 
-    return VariationalMeanExperimentArtifacts(
+    return VariationalMeanFlowModifiedExperimentArtifacts(
         velocity_model=velocity_model,
         encoder=encoder,
         history=history,
@@ -344,16 +344,16 @@ def compute_mean_flow_trajectories(
     return trajectory, times
 
 
-def compute_variational_mean_flow_trajectories(
+def compute_variational_mean_flow_modified_trajectories(
     model: VariationalMeanVelocityMLP,
     x0: torch.Tensor,
     device: torch.device,
-    variational_config: VariationalMeanFlowConfig,
+    variational_config: VariationalMeanFlowModifiedConfig,
     *,
     steps: int = 1,
     generator: torch.Generator | None = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Generate variational mean-flow trajectories using latent-conditioned velocity."""
+    """Generate variational mean flow modified trajectories using latent-conditioned velocity."""
 
     if steps < 1:
         raise ValueError("steps must be a positive integer")
@@ -827,14 +827,14 @@ def compute_variational_forward_mean_trajectories(
 __all__ = [
     "ExperimentArtifacts",
     "VariationalExperimentArtifacts",
-    "VariationalMeanExperimentArtifacts",
+    "VariationalMeanFlowModifiedExperimentArtifacts",
     "VariationalForwardMeanExperimentArtifacts",
     "VariationalForwardMeanModifiedExperimentArtifacts",
     "MeanFlowExperimentArtifacts",
     "VariationalTrainingHistory",
     "train_flow_matching",
     "train_mean_flow_matching",
-    "train_variational_mean_flow_matching",
+    "train_variational_mean_flow_modified_matching",
     "train_rectified_flow",
     "train_variational_flow_matching",
     "train_variational_forward_mean_flow_matching",
@@ -842,7 +842,7 @@ __all__ = [
     "generate_ground_truth",
     "compute_model_trajectories",
     "compute_mean_flow_trajectories",
-    "compute_variational_mean_flow_trajectories",
+    "compute_variational_mean_flow_modified_trajectories",
     "compute_variational_trajectories",
     "compute_variational_forward_mean_trajectories",
 ]
