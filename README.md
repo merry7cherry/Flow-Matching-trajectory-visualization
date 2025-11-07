@@ -8,7 +8,8 @@ This project visualizes flow matching trajectories for 1D and 2D synthetic datas
 - **Mean Flow** objective with an additional time parameter \(r\) and forward-mode differentiation during training.
 - **Rectified Flow** training using the trajectories produced by the base flow-matching model.
 - **Variational Flow Matching (VFM)** with a latent-conditioned velocity field trained jointly with a variational encoder.
-- **Variational Mean Flow (VMF)** that augments the variational architecture with forward-mode derivatives to match the mean field objective.
+- **Variational Forward Mean Flow (VFMF)** that augments the variational architecture with forward-mode derivatives to match the mean field objective.
+- **Variational Forward Mean Flow Modified (VFMF-M)** that shares the latent-conditioned velocity network with VFMF while using a forward encoder conditioned only on \(x_0, x_1\).
 - Modular interfaces for datasets, flow objectives, models, training, simulation, and visualization.
 - Deterministic experiments via a fixed random seed.
 
@@ -43,8 +44,8 @@ scripts/
    ```
 
    Images for the 1D and 2D experiments will be saved under the `outputs/` directory. The script trains the flow matching,
-   mean flow, rectified flow, variational flow matching, and variational forward mean flow baselines so you will find companion figures
-   labelled `flow_matching`, `mean_flow`, `rectified_flow`, `variational_flow`, and `variational_forward_mean_flow` for each dataset. Use the following optional
+   mean flow, rectified flow, variational flow matching, variational forward mean flow, and variational forward mean flow modified baselines so you will find companion figures
+   labelled `flow_matching`, `mean_flow`, `rectified_flow`, `variational_flow`, `variational_forward_mean_flow`, and `variational_forward_mean_flow_modified` for each dataset. Use the following optional
    flags to tune the variational flow experiments:
 
    - `--variational-latent-dim`: dimensionality of the latent code sampled from the VAE prior (default: 8)
@@ -53,6 +54,9 @@ scripts/
    - `--variational-forward-mean-latent-dim`: optional latent dimensionality override for VFMF (defaults to the VFM setting)
    - `--variational-forward-mean-kl-weight`: optional KL divergence weight override for VFMF (defaults to the VFM setting)
    - `--variational-forward-mean-matching-weight`: optional matching loss weight override for VFMF (defaults to the VFM setting)
+   - `--variational-forward-mean-modified-latent-dim`: optional latent dimensionality override for VFMF-M (defaults to the VFM setting)
+   - `--variational-forward-mean-modified-kl-weight`: optional KL divergence weight override for VFMF-M (defaults to the VFM setting)
+   - `--variational-forward-mean-modified-matching-weight`: optional matching loss weight override for VFMF-M (defaults to the VFM setting)
    - `--mean-flow-steps`: number of uniform inference steps used when sampling the mean flow (default: 1)
 
 ## Mean Flow
@@ -75,6 +79,16 @@ analysis.
 To visualize VFMF trajectories, use `flowviz.pipelines.flow_matching.compute_variational_forward_mean_trajectories`. The helper samples latent
 codes from the standard normal prior (matching inference-time behaviour) and integrates the velocity field with the Euler integrator,
 producing a tensor of states and their corresponding time stamps that can be plotted with the existing visualization utilities.
+
+## Variational Forward Mean Flow Modified (VFMF-M)
+
+The modified VFMF objective leverages the same latent-conditioned velocity network but replaces the encoder with a forward-only variant that
+conditions exclusively on \(x_0, x_1\). Consequently, the latent time derivative is identically zero and no Jacobian-vector products are needed for
+the encoder pathway. Training is handled by `flowviz.pipelines.flow_matching.train_variational_forward_mean_flow_modified_matching`, which mirrors
+the bookkeeping used for VFMF while omitting the latent JVP computation.
+
+For visualization, reuse `flowviz.pipelines.flow_matching.compute_variational_forward_mean_trajectories`—the inference procedure samples latent codes
+from the prior and integrates the velocity network exactly as in the standard VFMF case, ensuring comparable trajectory outputs.
 
 ## Adding New Flow Variants
 
