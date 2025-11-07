@@ -37,7 +37,7 @@ class VariationalEncoder(nn.Module):
 
 
 class VariationalMeanEncoder(nn.Module):
-    """Encode (x0, x1, xt, t, r) tuples into latent distribution parameters."""
+    """Encode (x0, x1, xt, t, h) tuples into latent distribution parameters."""
 
     def __init__(
         self,
@@ -59,7 +59,6 @@ class VariationalMeanEncoder(nn.Module):
         x1: torch.Tensor,
         xt: torch.Tensor,
         t: torch.Tensor,
-        r: torch.Tensor,
         h: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         inputs = torch.cat((x0, x1, xt, t, h), dim=1)
