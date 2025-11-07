@@ -13,6 +13,7 @@ from ..config import (
     TrainingConfig,
     VariationalFlowConfig,
     VariationalMeanFlowConfig,
+    VariationalForwardMeanFlowConfig,
     MeanFlowConfig,
 )
 from ..data.base import PairDataset
@@ -21,7 +22,11 @@ from ..flows.rectified import RectifiedFlowBuilder
 from ..flows.variational import VariationalFlowObjective
 from ..flows.time_sampling import sample_two_timesteps_t_r_v1
 from ..models.mlp import MeanVelocityMLP, VelocityMLP
-from ..models.variational import VariationalEncoder, VariationalVelocityMLP
+from ..models.variational import (
+    VariationalEncoder,
+    VariationalForwardEncoder,
+    VariationalVelocityMLP,
+)
 from ..simulation.integrators import EulerIntegrator
 from ..training.trainer import TrainingHistory, train_model
 
@@ -50,6 +55,13 @@ class VariationalExperimentArtifacts:
 class VariationalMeanExperimentArtifacts:
     velocity_model: VariationalVelocityMLP
     encoder: VariationalEncoder
+    history: VariationalTrainingHistory
+
+
+@dataclass
+class VariationalForwardMeanExperimentArtifacts:
+    velocity_model: VariationalVelocityMLP
+    encoder: VariationalForwardEncoder
     history: VariationalTrainingHistory
 
 
@@ -433,6 +445,119 @@ def train_variational_mean_flow_matching(
     )
 
 
+def train_variational_forward_mean_flow_matching(
+    dataset: PairDataset,
+    training_config: TrainingConfig,
+    variational_config: VariationalForwardMeanFlowConfig,
+) -> VariationalForwardMeanExperimentArtifacts:
+    """Train the modified variational forward mean flow objective."""
+
+    device = torch.device(training_config.device)
+    objective = VariationalFlowObjective()
+
+    velocity_model = VariationalVelocityMLP(
+        dim=dataset.dim,
+        latent_dim=variational_config.latent_dim,
+        hidden_sizes=variational_config.velocity_hidden_sizes,
+    ).to(device)
+
+    encoder = VariationalForwardEncoder(
+        dim=dataset.dim,
+        latent_dim=variational_config.latent_dim,
+        hidden_sizes=variational_config.encoder_hidden_sizes,
+    ).to(device)
+
+    optimizer = torch.optim.Adam(
+        list(velocity_model.parameters()) + list(encoder.parameters()),
+        lr=training_config.learning_rate,
+    )
+
+    total_history: List[float] = []
+    matching_history: List[float] = []
+    kl_history: List[float] = []
+
+    velocity_model.train()
+    encoder.train()
+
+    for _ in range(training_config.epochs):
+        epoch_total = 0.0
+        epoch_matching = 0.0
+        epoch_kl = 0.0
+
+        for _ in range(training_config.steps_per_epoch):
+            batch = dataset.sample_pairs(training_config.batch_size, device)
+            time_samples = objective.sample_time(training_config.batch_size, device)
+            interpolated_state = objective.interpolate(batch.x0, batch.x1, time_samples)
+            linear_velocity = batch.x1 - batch.x0
+
+            latent_noise = torch.randn(
+                interpolated_state.shape[0],
+                variational_config.latent_dim,
+                device=device,
+                dtype=interpolated_state.dtype,
+            )
+
+            unit_time_tangent = torch.ones_like(time_samples)
+
+            mean, logvar = encoder(batch.x0, batch.x1)
+            std = torch.exp(0.5 * logvar)
+            latent_sample = mean + std * latent_noise
+            latent_time_derivative = torch.zeros_like(latent_sample)
+
+            def latent_conditioned_velocity(
+                xt_in: torch.Tensor,
+                t_in: torch.Tensor,
+                z_in: torch.Tensor,
+            ) -> torch.Tensor:
+                return velocity_model(xt_in, t_in, z_in)
+
+            predicted_velocity, velocity_time_derivative = jvp(
+                latent_conditioned_velocity,
+                (interpolated_state, time_samples, latent_sample),
+                (linear_velocity, unit_time_tangent, latent_time_derivative),
+            )
+
+            flow_matching_target = (
+                linear_velocity + (1.0 - time_samples) * velocity_time_derivative
+            ).detach()
+
+            matching_loss = F.mse_loss(predicted_velocity, flow_matching_target)
+
+            kl_loss = 0.5 * torch.mean(
+                torch.sum(torch.exp(logvar) + mean.pow(2) - 1.0 - logvar, dim=1)
+            )
+
+            loss = (
+                variational_config.matching_weight * matching_loss
+                + variational_config.kl_weight * kl_loss
+            )
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            epoch_total += loss.item()
+            epoch_matching += matching_loss.item()
+            epoch_kl += kl_loss.item()
+
+        steps = max(1, training_config.steps_per_epoch)
+        total_history.append(epoch_total / steps)
+        matching_history.append(epoch_matching / steps)
+        kl_history.append(epoch_kl / steps)
+
+    history = VariationalTrainingHistory(
+        total_losses=total_history,
+        matching_losses=matching_history,
+        kl_losses=kl_history,
+    )
+
+    return VariationalForwardMeanExperimentArtifacts(
+        velocity_model=velocity_model,
+        encoder=encoder,
+        history=history,
+    )
+
+
 class _VariationalTrajectoryWrapper(torch.nn.Module):
     """Wrap the variational velocity network for trajectory integration."""
 
@@ -521,6 +646,7 @@ __all__ = [
     "ExperimentArtifacts",
     "VariationalExperimentArtifacts",
     "VariationalMeanExperimentArtifacts",
+    "VariationalForwardMeanExperimentArtifacts",
     "MeanFlowExperimentArtifacts",
     "VariationalTrainingHistory",
     "train_flow_matching",
@@ -528,6 +654,7 @@ __all__ = [
     "train_rectified_flow",
     "train_variational_flow_matching",
     "train_variational_mean_flow_matching",
+    "train_variational_forward_mean_flow_matching",
     "generate_ground_truth",
     "compute_model_trajectories",
     "compute_mean_flow_trajectories",
