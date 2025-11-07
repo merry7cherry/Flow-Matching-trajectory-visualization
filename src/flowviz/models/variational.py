@@ -61,7 +61,8 @@ class VariationalMeanEncoder(nn.Module):
         t: torch.Tensor,
         r: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        inputs = torch.cat((x0, x1, xt, t, r), dim=1)
+        h = t - r
+        inputs = torch.cat((x0, x1, xt, t, h), dim=1)
         stats = self.net(inputs)
         mean, logvar = stats.chunk(2, dim=1)
         return mean, logvar
