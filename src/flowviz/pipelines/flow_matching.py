@@ -232,8 +232,9 @@ def train_variational_mean_flow_matching(
                 xt_in: torch.Tensor,
                 t_in: torch.Tensor,
                 r_in: torch.Tensor,
+                h_in: torch.Tensor,
             ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-                mean, logvar = encoder(x0_in, x1_in, xt_in, t_in, r_in)
+                mean, logvar = encoder(x0_in, x1_in, xt_in, t_in, r_in, h_in)
                 std = torch.exp(0.5 * logvar)
                 latent_sample = mean + std * latent_noise
                 return latent_sample, mean, logvar
@@ -244,8 +245,15 @@ def train_variational_mean_flow_matching(
                 _,
             ) = jvp(
                 sample_latent_with_encoder,
-                (x0, x1, interpolated_state, t, r),
-                (zero_x0_tangent, zero_x1_tangent, linear_velocity, dtdt, drdt),
+                (x0, x1, interpolated_state, t, r, h),
+                (
+                    zero_x0_tangent,
+                    zero_x1_tangent,
+                    linear_velocity,
+                    dtdt,
+                    drdt,
+                    dtdt - drdt,
+                ),
             )
 
             def latent_conditioned_velocity(
