@@ -67,7 +67,7 @@ that only depends on the endpoints \((x_0, x_1)\). Since the latent code is inde
 derivative vanishes and the resulting training loop reuses the mean flow Jacobian-vector products without additional latent
 backpropagation terms. The implementation lives in `flowviz.pipelines.flow_matching.train_variational_mean_flow_modified_matching` and
 records the same aggregate loss statistics used by the other variational objectives. During inference,
-`flowviz.pipelines.flow_matching.compute_variational_mean_flow_modified_trajectories` samples latent codes from the standard normal prior
+`flowviz.pipelines.flow_matching.compute_variational_mean_flow_trajectories` samples latent codes from the standard normal prior
 and integrates the latent-conditioned mean flow network with uniformly spaced Euler updates, matching the interface of the
 deterministic mean flow helper.
 

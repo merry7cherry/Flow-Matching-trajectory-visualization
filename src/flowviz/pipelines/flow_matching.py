@@ -344,7 +344,7 @@ def compute_mean_flow_trajectories(
     return trajectory, times
 
 
-def compute_variational_mean_flow_modified_trajectories(
+def compute_variational_mean_flow_trajectories(
     model: VariationalMeanVelocityMLP,
     x0: torch.Tensor,
     device: torch.device,
@@ -842,7 +842,7 @@ __all__ = [
     "generate_ground_truth",
     "compute_model_trajectories",
     "compute_mean_flow_trajectories",
-    "compute_variational_mean_flow_modified_trajectories",
+    "compute_variational_mean_flow_trajectories",
     "compute_variational_trajectories",
     "compute_variational_forward_mean_trajectories",
 ]

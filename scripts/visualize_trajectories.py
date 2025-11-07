@@ -20,7 +20,7 @@ from flowviz.config import (
 from flowviz.pipelines.flow_matching import (
     compute_mean_flow_trajectories,
     compute_model_trajectories,
-    compute_variational_mean_flow_modified_trajectories,
+    compute_variational_mean_flow_trajectories,
     compute_variational_trajectories,
     compute_variational_forward_mean_trajectories,
     generate_ground_truth,
@@ -258,7 +258,7 @@ def main() -> None:
         (
             variational_mean_modified_predicted,
             variational_mean_modified_times,
-        ) = compute_variational_mean_flow_modified_trajectories(
+        ) = compute_variational_mean_flow_trajectories(
             variational_mean_modified_artifacts.velocity_model,
             eval_batch.x0,
             device,
