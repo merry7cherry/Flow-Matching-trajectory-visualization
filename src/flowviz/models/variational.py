@@ -87,8 +87,40 @@ class VariationalVelocityMLP(nn.Module):
         return self.mlp(torch.cat((x_flat, t_flat, z_flat), dim=1))
 
 
+class VariationalMeanVelocityMLP(nn.Module):
+    """Mean-flow velocity network conditioned on latent code z."""
+
+    def __init__(
+        self,
+        dim: int,
+        latent_dim: int,
+        hidden_sizes: tuple[int, ...] | None = None,
+        activation: type[nn.Module] = nn.SiLU,
+    ) -> None:
+        super().__init__()
+        hidden_sizes = hidden_sizes or (128, 128, 128)
+        input_dim = dim + 2 + latent_dim
+        layer_sizes = [input_dim, *hidden_sizes, dim]
+        self.mlp = MLP(layer_sizes, activation=activation)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        t: torch.Tensor,
+        h: torch.Tensor,
+        z: torch.Tensor,
+    ) -> torch.Tensor:
+        x_flat = x.view(x.shape[0], -1)
+        t_flat = t.view(t.shape[0], -1)
+        h_flat = h.view(h.shape[0], -1)
+        z_flat = z.view(z.shape[0], -1)
+        velocity = self.mlp(torch.cat((x_flat, t_flat, h_flat, z_flat), dim=1))
+        return velocity.reshape_as(x)
+
+
 __all__ = [
     "VariationalEncoder",
     "VariationalForwardEncoder",
     "VariationalVelocityMLP",
+    "VariationalMeanVelocityMLP",
 ]
