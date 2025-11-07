@@ -9,17 +9,20 @@ from flowviz.config import (
     DATASET_CONFIGS,
     DatasetConfig,
     IntegratorConfig,
+    MeanFlowConfig,
     RectifiedFlowConfig,
     TrainingConfig,
     VariationalFlowConfig,
     VariationalMeanFlowConfig,
 )
 from flowviz.pipelines.flow_matching import (
+    compute_mean_flow_trajectories,
     compute_model_trajectories,
     compute_variational_trajectories,
     compute_variational_mean_trajectories,
     generate_ground_truth,
     train_flow_matching,
+    train_mean_flow_matching,
     train_rectified_flow,
     train_variational_flow_matching,
     train_variational_mean_flow_matching,
@@ -42,6 +45,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=256, help="Batch size")
     parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--integrator-steps", type=int, default=60, help="Number of ODE steps for Euler integration")
+    parser.add_argument(
+        "--mean-flow-steps",
+        type=int,
+        default=1,
+        help="Number of uniform inference steps for mean-flow generation",
+    )
     parser.add_argument("--rectified-samples", type=int, default=6000, help="Samples for rectified dataset")
     parser.add_argument("--rectified-batch", type=int, default=512, help="Batch size during rectified dataset generation")
     parser.add_argument("--eval-samples", type=int, default=1024, help="Evaluation samples for plotting")
@@ -108,6 +117,8 @@ def parse_args() -> argparse.Namespace:
         parser.error("--max-display-1d must be a positive integer")
     if args.max_display_2d <= 0:
         parser.error("--max-display-2d must be a positive integer")
+    if args.mean_flow_steps <= 0:
+        parser.error("--mean-flow-steps must be a positive integer")
 
     return args
 
@@ -130,6 +141,7 @@ def main() -> None:
     training_config = prepare_training_config(args)
     integrator_config = IntegratorConfig(num_steps=args.integrator_steps)
     rectified_config = RectifiedFlowConfig(num_samples=args.rectified_samples, batch_size=args.rectified_batch)
+    mean_flow_config = MeanFlowConfig()
     variational_config = VariationalFlowConfig(
         latent_dim=args.variational_latent_dim,
         kl_weight=args.variational_kl_weight,
@@ -166,11 +178,21 @@ def main() -> None:
         dataset.reset_rng(args.seed)
         fm_artifacts = train_flow_matching(dataset, training_config)
 
+        print(f"Training mean flow for {dataset_config.label}...")
+        dataset.reset_rng(args.seed)
+        mean_flow_artifacts = train_mean_flow_matching(dataset, training_config, mean_flow_config)
+
         dataset.reset_rng(args.seed)
         eval_batch = dataset.sample_pairs(args.eval_samples, device)
         gt_trajectory, times = generate_ground_truth(eval_batch.x0, eval_batch.x1, integrator_config.num_steps)
         predicted_trajectory, _ = compute_model_trajectories(
             fm_artifacts.model, eval_batch.x0, device, integrator_config
+        )
+        mean_predicted, mean_times = compute_mean_flow_trajectories(
+            mean_flow_artifacts.model,
+            eval_batch.x0,
+            device,
+            steps=args.mean_flow_steps,
         )
 
         print(f"Training rectified flow for {dataset_config.label}...")
@@ -230,6 +252,15 @@ def main() -> None:
                     max_display=args.max_display_1d,
                     show_reference=args.show_ground_truth,
                 ),
+                "mean_flow": create_1d_trajectory_figure(
+                    mean_times,
+                    mean_predicted,
+                    "Mean Flow (1D)",
+                    reference=gt_trajectory,
+                    reference_times=times,
+                    max_display=args.max_display_1d,
+                    show_reference=args.show_ground_truth,
+                ),
                 "rectified_flow": create_1d_trajectory_figure(
                     times,
                     rectified_predicted,
@@ -266,6 +297,13 @@ def main() -> None:
                 "flow_matching": create_2d_trajectory_figure(
                     predicted_trajectory,
                     "Flow Matching (2D)",
+                    reference=gt_trajectory,
+                    max_display=args.max_display_2d,
+                    show_reference=args.show_ground_truth,
+                ),
+                "mean_flow": create_2d_trajectory_figure(
+                    mean_predicted,
+                    "Mean Flow (2D)",
                     reference=gt_trajectory,
                     max_display=args.max_display_2d,
                     show_reference=args.show_ground_truth,
