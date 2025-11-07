@@ -15,8 +15,13 @@ class VariationalFlowConfig:
 
 
 @dataclass
-class VariationalMeanFlowConfig(VariationalFlowConfig):
-    """Configuration for training and sampling variational mean flows."""
+class VariationalForwardMeanFlowConfig(VariationalFlowConfig):
+    """Configuration for training and sampling variational forward mean flows."""
+
+
+@dataclass
+class VariationalForwardMeanFlowModifiedConfig(VariationalFlowConfig):
+    """Configuration for the modified variational forward mean flow objective."""
 
 
 @dataclass
@@ -147,7 +152,8 @@ DATASET_CONFIGS: Dict[str, DatasetConfig] = {
 
 __all__ = [
     "VariationalFlowConfig",
-    "VariationalMeanFlowConfig",
+    "VariationalForwardMeanFlowConfig",
+    "VariationalForwardMeanFlowModifiedConfig",
     "MeanFlowConfig",
     "TrainingConfig",
     "IntegratorConfig",

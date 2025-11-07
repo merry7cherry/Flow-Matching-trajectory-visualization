@@ -13,19 +13,21 @@ from flowviz.config import (
     RectifiedFlowConfig,
     TrainingConfig,
     VariationalFlowConfig,
-    VariationalMeanFlowConfig,
+    VariationalForwardMeanFlowConfig,
+    VariationalForwardMeanFlowModifiedConfig,
 )
 from flowviz.pipelines.flow_matching import (
     compute_mean_flow_trajectories,
     compute_model_trajectories,
     compute_variational_trajectories,
-    compute_variational_mean_trajectories,
+    compute_variational_forward_mean_trajectories,
     generate_ground_truth,
     train_flow_matching,
     train_mean_flow_matching,
     train_rectified_flow,
     train_variational_flow_matching,
-    train_variational_mean_flow_matching,
+    train_variational_forward_mean_flow_matching,
+    train_variational_forward_mean_flow_modified_matching,
 )
 from flowviz.seed import create_generator, seed_all
 from flowviz.visualization.plotting import (
@@ -76,22 +78,40 @@ def parse_args() -> argparse.Namespace:
         help="Weight for flow-matching loss term in VFM",
     )
     parser.add_argument(
-        "--variational-mean-latent-dim",
+        "--variational-forward-mean-latent-dim",
         type=int,
         default=None,
-        help="Latent dimensionality for VMF (defaults to the VFM latent dim if omitted)",
+        help="Latent dimensionality for VFMF (defaults to the VFM latent dim if omitted)",
     )
     parser.add_argument(
-        "--variational-mean-kl-weight",
+        "--variational-forward-mean-kl-weight",
         type=float,
         default=None,
-        help="KL divergence weight for VMF (defaults to the VFM weight if omitted)",
+        help="KL divergence weight for VFMF (defaults to the VFM weight if omitted)",
     )
     parser.add_argument(
-        "--variational-mean-matching-weight",
+        "--variational-forward-mean-matching-weight",
         type=float,
         default=None,
-        help="Matching loss weight for VMF (defaults to the VFM weight if omitted)",
+        help="Matching loss weight for VFMF (defaults to the VFM weight if omitted)",
+    )
+    parser.add_argument(
+        "--variational-forward-mean-modified-latent-dim",
+        type=int,
+        default=None,
+        help="Latent dimensionality for VFMF-M (defaults to the VFM latent dim if omitted)",
+    )
+    parser.add_argument(
+        "--variational-forward-mean-modified-kl-weight",
+        type=float,
+        default=None,
+        help="KL divergence weight for VFMF-M (defaults to the VFM weight if omitted)",
+    )
+    parser.add_argument(
+        "--variational-forward-mean-modified-matching-weight",
+        type=float,
+        default=None,
+        help="Matching loss weight for VFMF-M (defaults to the VFM weight if omitted)",
     )
     parser.add_argument(
         "--show-ground-truth",
@@ -147,20 +167,37 @@ def main() -> None:
         kl_weight=args.variational_kl_weight,
         matching_weight=args.variational_matching_weight,
     )
-    variational_mean_config = VariationalMeanFlowConfig(
+    variational_forward_mean_config = VariationalForwardMeanFlowConfig(
         latent_dim=(
-            args.variational_mean_latent_dim
-            if args.variational_mean_latent_dim is not None
+            args.variational_forward_mean_latent_dim
+            if args.variational_forward_mean_latent_dim is not None
             else args.variational_latent_dim
         ),
         kl_weight=(
-            args.variational_mean_kl_weight
-            if args.variational_mean_kl_weight is not None
+            args.variational_forward_mean_kl_weight
+            if args.variational_forward_mean_kl_weight is not None
             else args.variational_kl_weight
         ),
         matching_weight=(
-            args.variational_mean_matching_weight
-            if args.variational_mean_matching_weight is not None
+            args.variational_forward_mean_matching_weight
+            if args.variational_forward_mean_matching_weight is not None
+            else args.variational_matching_weight
+        ),
+    )
+    variational_forward_mean_modified_config = VariationalForwardMeanFlowModifiedConfig(
+        latent_dim=(
+            args.variational_forward_mean_modified_latent_dim
+            if args.variational_forward_mean_modified_latent_dim is not None
+            else args.variational_latent_dim
+        ),
+        kl_weight=(
+            args.variational_forward_mean_modified_kl_weight
+            if args.variational_forward_mean_modified_kl_weight is not None
+            else args.variational_kl_weight
+        ),
+        matching_weight=(
+            args.variational_forward_mean_modified_matching_weight
+            if args.variational_forward_mean_modified_matching_weight is not None
             else args.variational_matching_weight
         ),
     )
@@ -222,19 +259,45 @@ def main() -> None:
             generator=inference_generator,
         )
 
-        print(f"Training variational mean flow matching for {dataset_config.label}...")
+        print(f"Training variational forward mean flow matching for {dataset_config.label}...")
         dataset.reset_rng(args.seed)
-        variational_mean_artifacts = train_variational_mean_flow_matching(
+        variational_forward_mean_artifacts = train_variational_forward_mean_flow_matching(
             dataset,
             training_config,
-            variational_mean_config,
+            variational_forward_mean_config,
         )
-        variational_mean_predicted, variational_mean_times = compute_variational_mean_trajectories(
-            variational_mean_artifacts.velocity_model,
+        (
+            variational_forward_mean_predicted,
+            variational_forward_mean_times,
+        ) = compute_variational_forward_mean_trajectories(
+            variational_forward_mean_artifacts.velocity_model,
             eval_batch.x0,
             device,
             integrator_config,
-            variational_mean_config,
+            variational_forward_mean_config,
+            generator=inference_generator,
+        )
+
+        print(
+            f"Training variational forward mean flow modified matching for {dataset_config.label}..."
+        )
+        dataset.reset_rng(args.seed)
+        variational_forward_mean_modified_artifacts = (
+            train_variational_forward_mean_flow_modified_matching(
+                dataset,
+                training_config,
+                variational_forward_mean_modified_config,
+            )
+        )
+        (
+            variational_forward_mean_modified_predicted,
+            variational_forward_mean_modified_times,
+        ) = compute_variational_forward_mean_trajectories(
+            variational_forward_mean_modified_artifacts.velocity_model,
+            eval_batch.x0,
+            device,
+            integrator_config,
+            variational_forward_mean_modified_config,
             generator=inference_generator,
         )
 
@@ -279,10 +342,19 @@ def main() -> None:
                     max_display=args.max_display_1d,
                     show_reference=args.show_ground_truth,
                 ),
-                "variational_mean_flow": create_1d_trajectory_figure(
-                    variational_mean_times,
-                    variational_mean_predicted,
-                    "Variational Mean Flow (1D)",
+                "variational_forward_mean_flow": create_1d_trajectory_figure(
+                    variational_forward_mean_times,
+                    variational_forward_mean_predicted,
+                    "Variational Forward Mean Flow (1D)",
+                    reference=gt_trajectory,
+                    reference_times=times,
+                    max_display=args.max_display_1d,
+                    show_reference=args.show_ground_truth,
+                ),
+                "variational_forward_mean_flow_modified": create_1d_trajectory_figure(
+                    variational_forward_mean_modified_times,
+                    variational_forward_mean_modified_predicted,
+                    "Variational Forward Mean Flow Modified (1D)",
                     reference=gt_trajectory,
                     reference_times=times,
                     max_display=args.max_display_1d,
@@ -322,9 +394,16 @@ def main() -> None:
                     max_display=args.max_display_2d,
                     show_reference=args.show_ground_truth,
                 ),
-                "variational_mean_flow": create_2d_trajectory_figure(
-                    variational_mean_predicted,
-                    "Variational Mean Flow (2D)",
+                "variational_forward_mean_flow": create_2d_trajectory_figure(
+                    variational_forward_mean_predicted,
+                    "Variational Forward Mean Flow (2D)",
+                    reference=gt_trajectory,
+                    max_display=args.max_display_2d,
+                    show_reference=args.show_ground_truth,
+                ),
+                "variational_forward_mean_flow_modified": create_2d_trajectory_figure(
+                    variational_forward_mean_modified_predicted,
+                    "Variational Forward Mean Flow Modified (2D)",
                     reference=gt_trajectory,
                     max_display=args.max_display_2d,
                     show_reference=args.show_ground_truth,

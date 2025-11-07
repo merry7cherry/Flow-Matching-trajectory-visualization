@@ -36,6 +36,34 @@ class VariationalEncoder(nn.Module):
         return mean, logvar
 
 
+class VariationalForwardEncoder(nn.Module):
+    """Encode (x0, x1) pairs into latent distribution parameters."""
+
+    def __init__(
+        self,
+        dim: int,
+        latent_dim: int,
+        hidden_sizes: tuple[int, ...] | None = None,
+        activation: type[nn.Module] = nn.SiLU,
+    ) -> None:
+        super().__init__()
+        hidden_sizes = hidden_sizes or (128, 128)
+        input_dim = 2 * dim
+        layer_sizes = [input_dim, *hidden_sizes, 2 * latent_dim]
+        self.net = MLP(layer_sizes, activation=activation)
+        self.latent_dim = latent_dim
+
+    def forward(
+        self,
+        x0: torch.Tensor,
+        x1: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        inputs = torch.cat((x0, x1), dim=1)
+        stats = self.net(inputs)
+        mean, logvar = stats.chunk(2, dim=1)
+        return mean, logvar
+
+
 class VariationalVelocityMLP(nn.Module):
     """Velocity network conditioned on latent code z."""
 
@@ -59,4 +87,8 @@ class VariationalVelocityMLP(nn.Module):
         return self.mlp(torch.cat((x_flat, t_flat, z_flat), dim=1))
 
 
-__all__ = ["VariationalEncoder", "VariationalVelocityMLP"]
+__all__ = [
+    "VariationalEncoder",
+    "VariationalForwardEncoder",
+    "VariationalVelocityMLP",
+]
