@@ -487,8 +487,10 @@ def compute_mean_flow_trajectories(
         for idx in range(steps):
             current_time = times[idx]
             evaluation_time = 1.0 - current_time
+            next_time = times[idx + 1]
+            reference_time = 1.0 - next_time
             t = torch.ones((batch_size, 1), device=device, dtype=base.dtype) * evaluation_time
-            r = torch.zeros_like(t)
+            r = torch.ones_like(t) * reference_time
             h = t - r
 
             velocity = model(current, t, h)
@@ -544,8 +546,10 @@ def compute_variational_mean_flow_trajectories(
         for idx in range(steps):
             current_time = times[idx]
             evaluation_time = 1.0 - current_time
+            next_time = times[idx + 1]
+            reference_time = 1.0 - next_time
             t = torch.ones((batch_size, 1), device=device, dtype=dtype) * evaluation_time
-            r = torch.zeros_like(t)
+            r = torch.ones_like(t) * reference_time
             h = t - r
 
             velocity = model(current, t, h, latent)
