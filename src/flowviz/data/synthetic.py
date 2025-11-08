@@ -72,18 +72,18 @@ class GaussianMixture2D(PairDataset):
         return samples.to(device)
 
 
-class WideGaussianToSixGaussiansDataset(PairDataset):
-    """2D dataset with a broad source Gaussian and clustered target Gaussians."""
+class CircularUniformToSixGaussiansDataset(PairDataset):
+    """2D dataset with a uniform circular source and clustered target Gaussians."""
 
     def __init__(
         self,
-        base_std: float = 3.0,
+        source_radius: float = 3.0,
         target_radius: float = 2.0,
         target_std: float = 0.2,
         seed: int = 42,
     ) -> None:
         super().__init__(dim=2, seed=seed)
-        self.base_std = base_std
+        self.source_radius = source_radius
         self.target_std = target_std
 
         angles = [2.0 * math.pi * i / 6 for i in range(6)]
@@ -99,8 +99,12 @@ class WideGaussianToSixGaussiansDataset(PairDataset):
         )
 
     def sample_base(self, batch_size: int, device: torch.device) -> torch.Tensor:
-        noise = torch.randn(batch_size, 2, generator=self._generator)
-        return (self.base_std * noise).to(device)
+        radii = self.source_radius * torch.sqrt(
+            torch.rand(batch_size, generator=self._generator)
+        )
+        angles = 2.0 * math.pi * torch.rand(batch_size, generator=self._generator)
+        samples = torch.stack((radii * torch.cos(angles), radii * torch.sin(angles)), dim=1)
+        return samples.to(device)
 
     def sample_target(self, batch_size: int, device: torch.device) -> torch.Tensor:
         component_idx = torch.randint(
@@ -195,7 +199,7 @@ class EightGaussianToMoonDataset(PairDataset):
 __all__ = [
     "GaussianMixture1D",
     "GaussianMixture2D",
-    "WideGaussianToSixGaussiansDataset",
+    "CircularUniformToSixGaussiansDataset",
     "EightGaussianToMoonDataset",
     "SampleBatch",
 ]

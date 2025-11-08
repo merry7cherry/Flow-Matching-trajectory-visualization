@@ -3,10 +3,10 @@ from typing import Any, Dict, Mapping, Type
 
 from .data.base import PairDataset
 from .data.synthetic import (
+    CircularUniformToSixGaussiansDataset,
     EightGaussianToMoonDataset,
     GaussianMixture1D,
     GaussianMixture2D,
-    WideGaussianToSixGaussiansDataset,
 )
 
 
@@ -166,12 +166,12 @@ EIGHT_GAUSSIANS_TO_MOONS = DatasetConfig(
     },
 )
 
-WIDE_TO_SIX_GAUSSIANS_2D = DatasetConfig(
-    name="2d_wide_to_six_gaussians",
-    label="2D Wide Gaussian to Six Gaussians",
-    dataset_cls=WideGaussianToSixGaussiansDataset,
+CIRCULAR_UNIFORM_TO_SIX_GAUSSIANS_2D = DatasetConfig(
+    name="2d_circular_uniform_to_six_gaussians",
+    label="2D Circular Uniform to Six Gaussians",
+    dataset_cls=CircularUniformToSixGaussiansDataset,
     kwargs={
-        "base_std": 3.0,
+        "source_radius": 3.0,
         "target_radius": 2.0,
         "target_std": 0.2,
     },
@@ -185,7 +185,7 @@ DATASET_CONFIGS: Dict[str, DatasetConfig] = {
         WIDE_SOURCE_NARROW_TARGET_1D,
         HEXAGONAL_TARGET_2D,
         EIGHT_GAUSSIANS_TO_MOONS,
-        WIDE_TO_SIX_GAUSSIANS_2D,
+        CIRCULAR_UNIFORM_TO_SIX_GAUSSIANS_2D,
     )
 }
 
@@ -206,6 +206,6 @@ __all__ = [
     "WIDE_SOURCE_NARROW_TARGET_1D",
     "HEXAGONAL_TARGET_2D",
     "EIGHT_GAUSSIANS_TO_MOONS",
-    "WIDE_TO_SIX_GAUSSIANS_2D",
+    "CIRCULAR_UNIFORM_TO_SIX_GAUSSIANS_2D",
     "DATASET_CONFIGS",
 ]
