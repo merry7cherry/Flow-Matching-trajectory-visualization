@@ -15,6 +15,7 @@ from flowviz.config import (
     VariationalFlowConfig,
     VariationalForwardMeanFlowConfig,
     VariationalForwardMeanFlowModifiedConfig,
+    VariationalMeanFlowConfig,
     VariationalMeanFlowModifiedConfig,
 )
 from flowviz.pipelines.flow_matching import (
@@ -28,6 +29,7 @@ from flowviz.pipelines.flow_matching import (
     train_mean_flow_matching,
     train_rectified_flow,
     train_variational_flow_matching,
+    train_variational_mean_flow_matching,
     train_variational_forward_mean_flow_matching,
     train_variational_forward_mean_flow_modified_matching,
     train_variational_mean_flow_modified_matching,
@@ -170,6 +172,18 @@ def main() -> None:
         kl_weight=args.variational_kl_weight,
         matching_weight=args.variational_matching_weight,
     )
+    variational_mean_config = VariationalMeanFlowConfig(
+        latent_dim=args.variational_latent_dim,
+        kl_weight=args.variational_kl_weight,
+        matching_weight=args.variational_matching_weight,
+        P_mean_t=mean_flow_config.P_mean_t,
+        P_std_t=mean_flow_config.P_std_t,
+        P_mean_r=mean_flow_config.P_mean_r,
+        P_std_r=mean_flow_config.P_std_r,
+        ratio=mean_flow_config.ratio,
+        norm_eps=mean_flow_config.norm_eps,
+        norm_p=mean_flow_config.norm_p,
+    )
     variational_mean_modified_config = VariationalMeanFlowModifiedConfig(
         latent_dim=args.variational_latent_dim,
         kl_weight=args.variational_kl_weight,
@@ -234,6 +248,14 @@ def main() -> None:
         dataset.reset_rng(args.seed)
         mean_flow_artifacts = train_mean_flow_matching(dataset, training_config, mean_flow_config)
 
+        print(f"Training variational mean flow for {dataset_config.label}...")
+        dataset.reset_rng(args.seed)
+        variational_mean_artifacts = train_variational_mean_flow_matching(
+            dataset,
+            training_config,
+            variational_mean_config,
+        )
+
         print(f"Training variational mean flow modified for {dataset_config.label}...")
         dataset.reset_rng(args.seed)
         variational_mean_modified_artifacts = train_variational_mean_flow_modified_matching(
@@ -253,6 +275,18 @@ def main() -> None:
             eval_batch.x0,
             device,
             steps=args.mean_flow_steps,
+        )
+        inference_generator = create_generator(args.seed, device=device.type)
+        (
+            variational_mean_predicted,
+            variational_mean_times,
+        ) = compute_variational_mean_flow_trajectories(
+            variational_mean_artifacts.velocity_model,
+            eval_batch.x0,
+            device,
+            variational_mean_config,
+            steps=args.mean_flow_steps,
+            generator=inference_generator,
         )
         inference_generator = create_generator(args.seed, device=device.type)
         (
@@ -358,6 +392,15 @@ def main() -> None:
                     max_display=args.max_display_1d,
                     show_reference=args.show_ground_truth,
                 ),
+                "variational_mean_flow": create_1d_trajectory_figure(
+                    variational_mean_times,
+                    variational_mean_predicted,
+                    "Variational Mean Flow (1D)",
+                    reference=gt_trajectory,
+                    reference_times=times,
+                    max_display=args.max_display_1d,
+                    show_reference=args.show_ground_truth,
+                ),
                 "variational_mean_flow_modified": create_1d_trajectory_figure(
                     variational_mean_modified_times,
                     variational_mean_modified_predicted,
@@ -419,6 +462,13 @@ def main() -> None:
                 "mean_flow": create_2d_trajectory_figure(
                     mean_predicted,
                     "Mean Flow (2D)",
+                    reference=gt_trajectory,
+                    max_display=args.max_display_2d,
+                    show_reference=args.show_ground_truth,
+                ),
+                "variational_mean_flow": create_2d_trajectory_figure(
+                    variational_mean_predicted,
+                    "Variational Mean Flow (2D)",
                     reference=gt_trajectory,
                     max_display=args.max_display_2d,
                     show_reference=args.show_ground_truth,

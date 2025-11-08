@@ -15,6 +15,7 @@ from ..config import (
     VariationalFlowConfig,
     VariationalForwardMeanFlowConfig,
     VariationalForwardMeanFlowModifiedConfig,
+    VariationalMeanFlowConfig,
     VariationalMeanFlowModifiedConfig,
 )
 from ..data.base import PairDataset
@@ -26,6 +27,7 @@ from ..models.mlp import MeanVelocityMLP, VelocityMLP
 from ..models.variational import (
     VariationalEncoder,
     VariationalForwardEncoder,
+    VariationalMeanEncoder,
     VariationalMeanVelocityMLP,
     VariationalVelocityMLP,
 )
@@ -50,6 +52,13 @@ class VariationalTrainingHistory:
 class VariationalExperimentArtifacts:
     velocity_model: VariationalVelocityMLP
     encoder: VariationalEncoder
+    history: VariationalTrainingHistory
+
+
+@dataclass
+class VariationalMeanFlowExperimentArtifacts:
+    velocity_model: VariationalMeanVelocityMLP
+    encoder: VariationalMeanEncoder
     history: VariationalTrainingHistory
 
 
@@ -152,6 +161,154 @@ def train_mean_flow_matching(
 
     history = TrainingHistory(losses=losses)
     return MeanFlowExperimentArtifacts(model=model, history=history)
+
+
+def train_variational_mean_flow_matching(
+    dataset: PairDataset,
+    training_config: TrainingConfig,
+    variational_config: VariationalMeanFlowConfig,
+) -> VariationalMeanFlowExperimentArtifacts:
+    """Train the variational mean flow objective with latent conditioning on (x0, x1, xt, t, h)."""
+
+    device = torch.device(training_config.device)
+    velocity_model = VariationalMeanVelocityMLP(
+        dim=dataset.dim,
+        latent_dim=variational_config.latent_dim,
+        hidden_sizes=variational_config.velocity_hidden_sizes,
+    ).to(device)
+
+    encoder = VariationalMeanEncoder(
+        dim=dataset.dim,
+        latent_dim=variational_config.latent_dim,
+        hidden_sizes=variational_config.encoder_hidden_sizes,
+    ).to(device)
+
+    optimizer = torch.optim.Adam(
+        list(velocity_model.parameters()) + list(encoder.parameters()),
+        lr=training_config.learning_rate,
+    )
+
+    total_history: List[float] = []
+    matching_history: List[float] = []
+    kl_history: List[float] = []
+
+    velocity_model.train()
+    encoder.train()
+
+    for _ in range(training_config.epochs):
+        epoch_total = 0.0
+        epoch_matching = 0.0
+        epoch_kl = 0.0
+
+        for _ in range(training_config.steps_per_epoch):
+            batch = dataset.sample_pairs(training_config.batch_size, device)
+            t_raw, r_raw = sample_two_timesteps_t_r_v1(
+                variational_config, training_config.batch_size, device
+            )
+            t = t_raw.view(-1, 1)
+            r = r_raw.view(-1, 1)
+
+            h = t - r
+            x0 = batch.x0
+            x1 = batch.x1
+            interpolated_state = (1.0 - t) * x1 + t * x0
+            linear_velocity = x0 - x1
+
+            latent_noise = torch.randn(
+                interpolated_state.shape[0],
+                variational_config.latent_dim,
+                device=device,
+                dtype=interpolated_state.dtype,
+            )
+
+            zero_x0_tangent = torch.zeros_like(x0)
+            zero_x1_tangent = torch.zeros_like(x1)
+            dtdt = torch.ones_like(t)
+            drdt = torch.zeros_like(r)
+
+            def sample_latent_with_encoder(
+                x0_in: torch.Tensor,
+                x1_in: torch.Tensor,
+                xt_in: torch.Tensor,
+                t_in: torch.Tensor,
+                r_in: torch.Tensor,
+            ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+                h_in = t_in - r_in
+                mean, logvar = encoder(x0_in, x1_in, xt_in, t_in, h_in)
+                std = torch.exp(0.5 * logvar)
+                latent_sample = mean + std * latent_noise
+                return latent_sample, mean, logvar
+
+            (latent_sample, latent_mean, latent_logvar), (
+                latent_time_derivative,
+                _,
+                _,
+            ) = jvp(
+                sample_latent_with_encoder,
+                (x0, x1, interpolated_state, t, r),
+                (
+                    zero_x0_tangent,
+                    zero_x1_tangent,
+                    linear_velocity,
+                    dtdt,
+                    drdt,
+                ),
+            )
+
+            def latent_conditioned_velocity(
+                z_in: torch.Tensor,
+                t_in: torch.Tensor,
+                r_in: torch.Tensor,
+                latent_in: torch.Tensor,
+            ) -> torch.Tensor:
+                h_in = t_in - r_in
+                return velocity_model(z_in, t_in, h_in, latent_in)
+
+            predicted_velocity, velocity_time_derivative = jvp(
+                latent_conditioned_velocity,
+                (interpolated_state, t, r, latent_sample),
+                (linear_velocity, dtdt, drdt, latent_time_derivative),
+            )
+
+            flow_target = (linear_velocity - h * velocity_time_derivative).detach()
+            squared_error = (predicted_velocity - flow_target) ** 2
+            squared_error = squared_error.view(squared_error.shape[0], -1).sum(dim=1)
+            adaptive_weight = (squared_error.detach() + variational_config.norm_eps) ** variational_config.norm_p
+            matching_loss = torch.mean(squared_error / adaptive_weight)
+
+            kl_loss = 0.5 * torch.mean(
+                torch.sum(torch.exp(latent_logvar) + latent_mean.pow(2) - 1.0 - latent_logvar, dim=1)
+            )
+
+            loss = (
+                variational_config.matching_weight * matching_loss
+                + variational_config.kl_weight * kl_loss
+            )
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            epoch_total += loss.item()
+            epoch_matching += matching_loss.item()
+            epoch_kl += kl_loss.item()
+
+        steps = max(1, training_config.steps_per_epoch)
+        total_history.append(epoch_total / steps)
+        matching_history.append(epoch_matching / steps)
+        kl_history.append(epoch_kl / steps)
+
+    history = VariationalTrainingHistory(
+        total_losses=total_history,
+        matching_losses=matching_history,
+        kl_losses=kl_history,
+    )
+
+    return VariationalMeanFlowExperimentArtifacts(
+        velocity_model=velocity_model,
+        encoder=encoder,
+        history=history,
+    )
 
 
 def train_variational_mean_flow_modified_matching(
@@ -348,12 +505,12 @@ def compute_variational_mean_flow_trajectories(
     model: VariationalMeanVelocityMLP,
     x0: torch.Tensor,
     device: torch.device,
-    variational_config: VariationalMeanFlowModifiedConfig,
+    variational_config: VariationalMeanFlowConfig,
     *,
     steps: int = 1,
     generator: torch.Generator | None = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Generate variational mean flow modified trajectories using latent-conditioned velocity."""
+    """Generate variational mean flow trajectories using latent-conditioned velocity."""
 
     if steps < 1:
         raise ValueError("steps must be a positive integer")
@@ -827,6 +984,7 @@ def compute_variational_forward_mean_trajectories(
 __all__ = [
     "ExperimentArtifacts",
     "VariationalExperimentArtifacts",
+    "VariationalMeanFlowExperimentArtifacts",
     "VariationalMeanFlowModifiedExperimentArtifacts",
     "VariationalForwardMeanExperimentArtifacts",
     "VariationalForwardMeanModifiedExperimentArtifacts",
@@ -834,6 +992,7 @@ __all__ = [
     "VariationalTrainingHistory",
     "train_flow_matching",
     "train_mean_flow_matching",
+    "train_variational_mean_flow_matching",
     "train_variational_mean_flow_modified_matching",
     "train_rectified_flow",
     "train_variational_flow_matching",

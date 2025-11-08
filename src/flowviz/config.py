@@ -15,8 +15,8 @@ class VariationalFlowConfig:
 
 
 @dataclass
-class VariationalMeanFlowModifiedConfig(VariationalFlowConfig):
-    """Configuration for training variational mean flow modified objectives."""
+class _VariationalMeanFlowBaseConfig(VariationalFlowConfig):
+    """Shared configuration for variational mean flow style objectives."""
 
     P_mean_t: float = 0.0
     P_std_t: float = 1.0
@@ -25,6 +25,16 @@ class VariationalMeanFlowModifiedConfig(VariationalFlowConfig):
     ratio: float = 0.5
     norm_eps: float = 1e-4
     norm_p: float = 0.5
+
+
+@dataclass
+class VariationalMeanFlowConfig(_VariationalMeanFlowBaseConfig):
+    """Configuration for the variational mean flow objective."""
+
+
+@dataclass
+class VariationalMeanFlowModifiedConfig(_VariationalMeanFlowBaseConfig):
+    """Configuration for training variational mean flow modified objectives."""
 
 
 @dataclass
@@ -165,6 +175,7 @@ DATASET_CONFIGS: Dict[str, DatasetConfig] = {
 
 __all__ = [
     "VariationalFlowConfig",
+    "VariationalMeanFlowConfig",
     "VariationalMeanFlowModifiedConfig",
     "VariationalForwardMeanFlowConfig",
     "VariationalForwardMeanFlowModifiedConfig",

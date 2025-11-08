@@ -6,6 +6,7 @@ This project visualizes flow matching trajectories for 1D and 2D synthetic datas
 
 - **Standard Flow Matching** with linear interpolation.
 - **Mean Flow** objective with an additional time parameter \(r\) and forward-mode differentiation during training.
+- **Variational Mean Flow** objective that augments the mean flow with a latent encoder conditioned on \((x_0, x_1, x_t, t, r)\).
 - **Variational Mean Flow Modified** objective that augments the mean flow with a latent encoder conditioned on \((x_0, x_1)\).
 - **Rectified Flow** training using the trajectories produced by the base flow-matching model.
 - **Variational Flow Matching (VFM)** with a latent-conditioned velocity field trained jointly with a variational encoder.
@@ -45,8 +46,8 @@ scripts/
    ```
 
    Images for the 1D and 2D experiments will be saved under the `outputs/` directory. The script trains the flow matching,
-   mean flow, variational mean flow modified, rectified flow, variational flow matching, variational forward mean flow, and variational forward mean flow modified baselines so you will find companion figures
-   labelled `flow_matching`, `mean_flow`, `variational_mean_flow_modified`, `rectified_flow`, `variational_flow`, `variational_forward_mean_flow`, and `variational_forward_mean_flow_modified` for each dataset. Use the following optional
+   mean flow, variational mean flow, variational mean flow modified, rectified flow, variational flow matching, variational forward mean flow, and variational forward mean flow modified baselines so you will find companion figures
+   labelled `flow_matching`, `mean_flow`, `variational_mean_flow`, `variational_mean_flow_modified`, `rectified_flow`, `variational_flow`, `variational_forward_mean_flow`, and `variational_forward_mean_flow_modified` for each dataset. Use the following optional
    flags to tune the variational flow experiments:
 
    - `--variational-latent-dim`: dimensionality of the latent code sampled from the VAE prior (default: 8)
@@ -59,6 +60,18 @@ scripts/
    - `--variational-forward-mean-modified-kl-weight`: optional KL divergence weight override for VFMF-M (defaults to the VFM setting)
    - `--variational-forward-mean-modified-matching-weight`: optional matching loss weight override for VFMF-M (defaults to the VFM setting)
    - `--mean-flow-steps`: number of uniform inference steps used when sampling the mean flow (default: 1)
+
+## Variational Mean Flow (VMF)
+
+The variational mean flow objective extends the mean flow formulation with a latent encoder that observes the full interpolation
+state \((x_0, x_1, x_t, t, r)\). During training, `flowviz.pipelines.flow_matching.train_variational_mean_flow_matching`
+uses `torch.func.jvp` to propagate the latent Jacobian-vector products through the velocity field, mirroring the mean flow
+target while accounting for the latent dynamics. The encoder shares the same hyper-parameters as the modified variant so you can
+reuse the command-line flags exposed by `scripts/visualize_trajectories.py`.
+
+The helper `flowviz.pipelines.flow_matching.compute_variational_mean_flow_trajectories` samples latent codes from the standard
+normal prior and integrates the latent-conditioned velocity network with uniformly spaced Euler updates, matching the interface
+of the deterministic mean flow helper.
 
 ## Variational Mean Flow Modified (VMFM)
 
