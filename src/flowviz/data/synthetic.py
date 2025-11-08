@@ -72,6 +72,49 @@ class GaussianMixture2D(PairDataset):
         return samples.to(device)
 
 
+class WideGaussianToSixGaussiansDataset(PairDataset):
+    """2D dataset with a broad source Gaussian and clustered target Gaussians."""
+
+    def __init__(
+        self,
+        base_std: float = 3.0,
+        target_radius: float = 2.0,
+        target_std: float = 0.2,
+        seed: int = 42,
+    ) -> None:
+        super().__init__(dim=2, seed=seed)
+        self.base_std = base_std
+        self.target_std = target_std
+
+        angles = [2.0 * math.pi * i / 6 for i in range(6)]
+        self.target_centers = torch.tensor(
+            [
+                (
+                    target_radius * math.cos(theta),
+                    target_radius * math.sin(theta),
+                )
+                for theta in angles
+            ],
+            dtype=torch.float32,
+        )
+
+    def sample_base(self, batch_size: int, device: torch.device) -> torch.Tensor:
+        noise = torch.randn(batch_size, 2, generator=self._generator)
+        return (self.base_std * noise).to(device)
+
+    def sample_target(self, batch_size: int, device: torch.device) -> torch.Tensor:
+        component_idx = torch.randint(
+            low=0,
+            high=self.target_centers.shape[0],
+            size=(batch_size,),
+            generator=self._generator,
+        )
+        centers = self.target_centers[component_idx]
+        noise = torch.randn(batch_size, 2, generator=self._generator) * self.target_std
+        samples = centers + noise
+        return samples.to(device)
+
+
 class EightGaussianToMoonDataset(PairDataset):
     """2D dataset mapping an outer ring of Gaussians to an inner two-moon shape."""
 
@@ -152,6 +195,7 @@ class EightGaussianToMoonDataset(PairDataset):
 __all__ = [
     "GaussianMixture1D",
     "GaussianMixture2D",
+    "WideGaussianToSixGaussiansDataset",
     "EightGaussianToMoonDataset",
     "SampleBatch",
 ]

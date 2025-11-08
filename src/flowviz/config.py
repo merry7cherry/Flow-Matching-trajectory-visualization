@@ -2,7 +2,12 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Mapping, Type
 
 from .data.base import PairDataset
-from .data.synthetic import EightGaussianToMoonDataset, GaussianMixture1D, GaussianMixture2D
+from .data.synthetic import (
+    EightGaussianToMoonDataset,
+    GaussianMixture1D,
+    GaussianMixture2D,
+    WideGaussianToSixGaussiansDataset,
+)
 
 
 @dataclass
@@ -161,6 +166,17 @@ EIGHT_GAUSSIANS_TO_MOONS = DatasetConfig(
     },
 )
 
+WIDE_TO_SIX_GAUSSIANS_2D = DatasetConfig(
+    name="2d_wide_to_six_gaussians",
+    label="2D Wide Gaussian to Six Gaussians",
+    dataset_cls=WideGaussianToSixGaussiansDataset,
+    kwargs={
+        "base_std": 3.0,
+        "target_radius": 2.0,
+        "target_std": 0.2,
+    },
+)
+
 DATASET_CONFIGS: Dict[str, DatasetConfig] = {
     cfg.name: cfg
     for cfg in (
@@ -169,6 +185,7 @@ DATASET_CONFIGS: Dict[str, DatasetConfig] = {
         WIDE_SOURCE_NARROW_TARGET_1D,
         HEXAGONAL_TARGET_2D,
         EIGHT_GAUSSIANS_TO_MOONS,
+        WIDE_TO_SIX_GAUSSIANS_2D,
     )
 }
 
@@ -189,5 +206,6 @@ __all__ = [
     "WIDE_SOURCE_NARROW_TARGET_1D",
     "HEXAGONAL_TARGET_2D",
     "EIGHT_GAUSSIANS_TO_MOONS",
+    "WIDE_TO_SIX_GAUSSIANS_2D",
     "DATASET_CONFIGS",
 ]
