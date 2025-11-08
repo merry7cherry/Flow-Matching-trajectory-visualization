@@ -68,7 +68,7 @@ def parse_args() -> argparse.Namespace:
             "1d_default",
             "2d_default",
             "1d_wide_source_narrow_target",
-            "2d_wide_to_six_gaussians",
+            "2d_circular_uniform_to_six_gaussians",
             "2d_hexagonal_target",
             "2d_eight_gaussians_to_moons",
         ],
