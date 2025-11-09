@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=150, help="Training epochs")
     parser.add_argument("--steps-per-epoch", type=int, default=100, help="Gradient steps per epoch")
     parser.add_argument("--batch-size", type=int, default=256, help="Batch size")
-    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
+    parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--integrator-steps", type=int, default=60, help="Number of ODE steps for Euler integration")
     parser.add_argument(
         "--mean-flow-steps",
