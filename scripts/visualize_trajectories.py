@@ -547,7 +547,7 @@ def main() -> None:
                     "Ground Truth Cheat (2D)",
                     reference=gt_trajectory,
                     max_display=args.max_display_2d,
-                    show_reference=Flase,
+                    show_reference=False,
                 )
 
         for name, fig in figures.items():
