@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=150, help="Training epochs")
     parser.add_argument("--steps-per-epoch", type=int, default=100, help="Gradient steps per epoch")
     parser.add_argument("--batch-size", type=int, default=256, help="Batch size")
-    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
+    parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--integrator-steps", type=int, default=60, help="Number of ODE steps for Euler integration")
     parser.add_argument(
         "--mean-flow-steps",
@@ -141,7 +141,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--cheat-ratio",
         type=float,
-        default=0.0,
+        default=0.2,
         help="Fraction of duplicated ground-truth trajectories converted to curves for the cheat method",
     )
     parser.add_argument(
@@ -547,7 +547,7 @@ def main() -> None:
                     "Ground Truth Cheat (2D)",
                     reference=gt_trajectory,
                     max_display=args.max_display_2d,
-                    show_reference=True,
+                    show_reference=Flase,
                 )
 
         for name, fig in figures.items():
