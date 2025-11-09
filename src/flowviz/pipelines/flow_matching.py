@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
+import math
 import torch
 import torch.nn.functional as F
 from torch.func import jvp
@@ -438,6 +439,89 @@ def generate_ground_truth(
         gt = (1.0 - t) * x0 + t * x1
         ground_truth.append(gt)
     return torch.stack(ground_truth, dim=0), times
+
+
+def generate_cheat_ground_truth(
+    ground_truth: torch.Tensor,
+    ratio: float,
+    curvature: float,
+    generator: Optional[torch.Generator] = None,
+) -> torch.Tensor:
+    """Create curved variants of ground-truth trajectories for cheat visualizations."""
+
+    if ground_truth.ndim != 3:
+        raise ValueError("ground_truth must have shape (steps, batch, dim)")
+    if ground_truth.shape[-1] != 2:
+        raise ValueError("cheat ground truth is only supported for 2D trajectories")
+    if not 0.0 <= ratio <= 1.0:
+        raise ValueError("ratio must be within [0, 1]")
+    if curvature < 0.0:
+        raise ValueError("curvature must be non-negative")
+
+    num_trajectories = ground_truth.shape[1]
+    if num_trajectories == 0:
+        return ground_truth.clone()
+
+    cheat = ground_truth.clone()
+    if ratio == 0.0 or curvature == 0.0:
+        return cheat
+
+    num_curved = min(num_trajectories, math.ceil(num_trajectories * ratio))
+    if num_curved == 0:
+        return cheat
+
+    device = ground_truth.device
+    dtype = ground_truth.dtype
+
+    permutation = torch.randperm(
+        num_trajectories, device=device, generator=generator
+    )
+    selected = permutation[:num_curved]
+
+    steps = ground_truth.shape[0]
+    t_values = torch.linspace(0.0, 1.0, steps, device=device, dtype=dtype).view(-1, 1)
+    one_minus_t = 1.0 - t_values
+
+    for idx_tensor in selected:
+        idx = int(idx_tensor.item())
+        line = ground_truth[:, idx]
+        start = line[0]
+        end = line[-1]
+        direction = end - start
+        length = torch.norm(direction)
+        if torch.isnan(length) or length <= 1e-8:
+            continue
+
+        perp = torch.stack((-direction[1], direction[0]))
+        perp_norm = perp / (torch.norm(perp) + 1e-8)
+
+        if generator is None:
+            curvature_random = torch.rand((), device=device)
+        else:
+            curvature_random = torch.rand((), device=device, generator=generator)
+        curvature_random = curvature_random.to(dtype=dtype)
+
+        amplitude = curvature_random * curvature * length
+        if amplitude <= 0:
+            continue
+
+        if generator is None:
+            sign_random = torch.rand((), device=device)
+        else:
+            sign_random = torch.rand((), device=device, generator=generator)
+        sign = torch.where(sign_random >= 0.5, 1.0, -1.0)
+        sign = sign.to(dtype=dtype)
+
+        control = (start + end) / 2.0 + perp_norm * amplitude * sign
+
+        curved = (
+            (one_minus_t**2) * start
+            + 2.0 * one_minus_t * t_values * control
+            + (t_values**2) * end
+        )
+        cheat[:, idx] = curved
+
+    return cheat
 
 
 def compute_model_trajectories(
@@ -1003,6 +1087,7 @@ __all__ = [
     "train_variational_forward_mean_flow_matching",
     "train_variational_forward_mean_flow_modified_matching",
     "generate_ground_truth",
+    "generate_cheat_ground_truth",
     "compute_model_trajectories",
     "compute_mean_flow_trajectories",
     "compute_variational_mean_flow_trajectories",
