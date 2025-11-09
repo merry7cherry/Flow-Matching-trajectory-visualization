@@ -24,6 +24,7 @@ from flowviz.pipelines.flow_matching import (
     compute_variational_mean_flow_trajectories,
     compute_variational_trajectories,
     compute_variational_forward_mean_trajectories,
+    generate_cheat_ground_truth,
     generate_ground_truth,
     train_flow_matching,
     train_mean_flow_matching,
@@ -137,6 +138,18 @@ def parse_args() -> argparse.Namespace:
         default=128,
         help="Maximum number of trajectories to display for 2D visualizations",
     )
+    parser.add_argument(
+        "--cheat-ratio",
+        type=float,
+        default=0.0,
+        help="Fraction of duplicated ground-truth trajectories converted to curves for the cheat method",
+    )
+    parser.add_argument(
+        "--cheat-curvature",
+        type=float,
+        default=0.3,
+        help="Relative curvature applied to cheat trajectories (larger values produce more pronounced curves)",
+    )
     args = parser.parse_args()
 
     if args.max_display_1d <= 0:
@@ -145,6 +158,10 @@ def parse_args() -> argparse.Namespace:
         parser.error("--max-display-2d must be a positive integer")
     if args.mean_flow_steps <= 0:
         parser.error("--mean-flow-steps must be a positive integer")
+    if not 0.0 <= args.cheat_ratio <= 1.0:
+        parser.error("--cheat-ratio must be within [0, 1]")
+    if args.cheat_curvature < 0.0:
+        parser.error("--cheat-curvature must be non-negative")
 
     return args
 
@@ -268,6 +285,19 @@ def main() -> None:
         dataset.reset_rng(args.seed)
         eval_batch = dataset.sample_pairs(args.eval_samples, device)
         gt_trajectory, times = generate_ground_truth(eval_batch.x0, eval_batch.x1, integrator_config.num_steps)
+        cheat_trajectory = None
+        if (
+            dataset_config.name == "2d_eight_gaussians_to_moons"
+            and dataset.dim == 2
+            and args.cheat_ratio > 0.0
+        ):
+            cheat_generator = create_generator(args.seed, device=gt_trajectory.device.type)
+            cheat_trajectory = generate_cheat_ground_truth(
+                gt_trajectory,
+                ratio=args.cheat_ratio,
+                curvature=args.cheat_curvature,
+                generator=cheat_generator,
+            )
         predicted_trajectory, _ = compute_model_trajectories(
             fm_artifacts.model, eval_batch.x0, device, integrator_config
         )
@@ -510,6 +540,15 @@ def main() -> None:
                     show_reference=args.show_ground_truth,
                 ),
             }
+
+            if cheat_trajectory is not None:
+                figures["ground_truth_cheat"] = create_2d_trajectory_figure(
+                    cheat_trajectory,
+                    "Ground Truth Cheat (2D)",
+                    reference=gt_trajectory,
+                    max_display=args.max_display_2d,
+                    show_reference=True,
+                )
 
         for name, fig in figures.items():
             filename = output_dir / f"{key}_{name}.png"
