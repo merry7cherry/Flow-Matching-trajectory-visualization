@@ -55,7 +55,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mean-flow-steps",
         type=int,
-        default=1,
+        default=10,
         help="Number of uniform inference steps for mean-flow generation",
     )
     parser.add_argument("--rectified-samples", type=int, default=6000, help="Samples for rectified dataset")
@@ -68,6 +68,7 @@ def parse_args() -> argparse.Namespace:
             "1d_default",
             "2d_default",
             "1d_wide_source_narrow_target",
+            "2d_circular_uniform_to_six_gaussians",
             "2d_hexagonal_target",
             "2d_eight_gaussians_to_moons",
         ],
@@ -79,7 +80,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--variational-matching-weight",
         type=float,
-        default=1.0,
+        default=2.0,
         help="Weight for flow-matching loss term in VFM",
     )
     parser.add_argument(
