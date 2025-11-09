@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
+import math
 import torch
 import torch.nn.functional as F
 from torch.func import jvp
@@ -438,6 +439,169 @@ def generate_ground_truth(
         gt = (1.0 - t) * x0 + t * x1
         ground_truth.append(gt)
     return torch.stack(ground_truth, dim=0), times
+
+
+def generate_cheat_ground_truth(
+    ground_truth: torch.Tensor,
+    ratio: float,
+    curvature: float,
+    *,
+    target_noise_ratio: float = 0.0,
+    target_noise_strength: float = 0.0,
+    trajectory_noise_ratio: float = 0.0,
+    trajectory_noise_strength: float = 0.0,
+    generator: Optional[torch.Generator] = None,
+) -> torch.Tensor:
+    """Create curved variants of ground-truth trajectories for cheat visualizations.
+
+    The transformation is applied in three phases:
+
+    1. Optionally perturb a subset of target endpoints with random noise.
+    2. Convert a fraction of trajectories into quadratic Bézier curves.
+    3. Optionally add noise along the interior points of the resulting curves.
+    """
+
+    if ground_truth.ndim != 3:
+        raise ValueError("ground_truth must have shape (steps, batch, dim)")
+    if ground_truth.shape[-1] != 2:
+        raise ValueError("cheat ground truth is only supported for 2D trajectories")
+    if not 0.0 <= ratio <= 1.0:
+        raise ValueError("ratio must be within [0, 1]")
+    if curvature < 0.0:
+        raise ValueError("curvature must be non-negative")
+    if not 0.0 <= target_noise_ratio <= 1.0:
+        raise ValueError("target_noise_ratio must be within [0, 1]")
+    if target_noise_strength < 0.0:
+        raise ValueError("target_noise_strength must be non-negative")
+    if not 0.0 <= trajectory_noise_ratio <= 1.0:
+        raise ValueError("trajectory_noise_ratio must be within [0, 1]")
+    if trajectory_noise_strength < 0.0:
+        raise ValueError("trajectory_noise_strength must be non-negative")
+
+    num_trajectories = ground_truth.shape[1]
+    if num_trajectories == 0:
+        return ground_truth.clone()
+
+    cheat = ground_truth.clone()
+    device = ground_truth.device
+    dtype = ground_truth.dtype
+
+    if target_noise_ratio > 0.0 and target_noise_strength > 0.0:
+        num_noisy_targets = min(
+            num_trajectories, math.ceil(num_trajectories * target_noise_ratio)
+        )
+        if num_noisy_targets > 0:
+            permutation = torch.randperm(
+                num_trajectories, device=device, generator=generator
+            )
+            target_indices = permutation[:num_noisy_targets]
+
+            for idx_tensor in target_indices:
+                idx = int(idx_tensor.item())
+                start = ground_truth[0, idx]
+                end = ground_truth[-1, idx]
+                direction = end - start
+                length = torch.norm(direction)
+                if torch.isnan(length) or length <= 1e-8:
+                    continue
+
+                amplitude = target_noise_strength * length
+                if amplitude <= 0:
+                    continue
+
+                noise = torch.randn(
+                    (ground_truth.shape[-1],),
+                    device=device,
+                    generator=generator,
+                    dtype=dtype,
+                )
+                cheat[-1, idx] = cheat[-1, idx] + noise * amplitude
+
+    steps = ground_truth.shape[0]
+    t_values = torch.linspace(0.0, 1.0, steps, device=device, dtype=dtype).view(-1, 1)
+    one_minus_t = 1.0 - t_values
+
+    if ratio > 0.0 and curvature > 0.0:
+        num_curved = min(num_trajectories, math.ceil(num_trajectories * ratio))
+        if num_curved > 0:
+            permutation = torch.randperm(
+                num_trajectories, device=device, generator=generator
+            )
+            selected = permutation[:num_curved]
+
+            for idx_tensor in selected:
+                idx = int(idx_tensor.item())
+                start = cheat[0, idx]
+                end = cheat[-1, idx]
+                direction = end - start
+                length = torch.norm(direction)
+                if torch.isnan(length) or length <= 1e-8:
+                    continue
+
+                perp = torch.stack((-direction[1], direction[0]))
+                perp_norm = perp / (torch.norm(perp) + 1e-8)
+
+                if generator is None:
+                    curvature_random = torch.rand((), device=device)
+                else:
+                    curvature_random = torch.rand(
+                        (), device=device, generator=generator
+                    )
+                curvature_random = curvature_random.to(dtype=dtype)
+
+                amplitude = curvature_random * curvature * length
+                if amplitude <= 0:
+                    continue
+
+                if generator is None:
+                    sign_random = torch.rand((), device=device)
+                else:
+                    sign_random = torch.rand((), device=device, generator=generator)
+                sign = torch.where(sign_random >= 0.5, 1.0, -1.0)
+                sign = sign.to(dtype=dtype)
+
+                control = (start + end) / 2.0 + perp_norm * amplitude * sign
+
+                curved = (
+                    (one_minus_t**2) * start
+                    + 2.0 * one_minus_t * t_values * control
+                    + (t_values**2) * end
+                )
+                cheat[:, idx] = curved
+
+    if trajectory_noise_ratio > 0.0 and trajectory_noise_strength > 0.0:
+        num_noisy_trajectories = min(
+            num_trajectories, math.ceil(num_trajectories * trajectory_noise_ratio)
+        )
+        if num_noisy_trajectories > 0 and steps > 2:
+            permutation = torch.randperm(
+                num_trajectories, device=device, generator=generator
+            )
+            trajectory_indices = permutation[:num_noisy_trajectories]
+
+            for idx_tensor in trajectory_indices:
+                idx = int(idx_tensor.item())
+                start = cheat[0, idx]
+                end = cheat[-1, idx]
+                direction = end - start
+                length = torch.norm(direction)
+                if torch.isnan(length) or length <= 1e-8:
+                    continue
+
+                amplitude = trajectory_noise_strength * length
+                if amplitude <= 0:
+                    continue
+
+                interior = cheat[1:-1, idx]
+                noise = torch.randn(
+                    interior.shape,
+                    device=device,
+                    generator=generator,
+                    dtype=dtype,
+                )
+                cheat[1:-1, idx] = interior + noise * amplitude
+
+    return cheat
 
 
 def compute_model_trajectories(
@@ -1003,6 +1167,7 @@ __all__ = [
     "train_variational_forward_mean_flow_matching",
     "train_variational_forward_mean_flow_modified_matching",
     "generate_ground_truth",
+    "generate_cheat_ground_truth",
     "compute_model_trajectories",
     "compute_mean_flow_trajectories",
     "compute_variational_mean_flow_trajectories",
