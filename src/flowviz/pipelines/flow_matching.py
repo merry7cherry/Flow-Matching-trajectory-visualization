@@ -560,7 +560,19 @@ def generate_cheat_ground_truth(
                 sign = torch.where(sign_random >= 0.5, 1.0, -1.0)
                 sign = sign.to(dtype=dtype)
 
-                control = (start + end) / 2.0 + perp_norm * amplitude * sign
+                if generator is None:
+                    control_position = torch.rand((), device=device)
+                else:
+                    control_position = torch.rand(
+                        (), device=device, generator=generator
+                    )
+                control_position = control_position.to(dtype=dtype)
+                # Keep the control point away from the extrema to avoid
+                # degenerate curves that collapse to the original segment.
+                control_position = control_position.clamp(0.15, 0.85)
+
+                base_point = start + control_position * direction
+                control = base_point + perp_norm * amplitude * sign
 
                 curved = (
                     (one_minus_t**2) * start
@@ -593,13 +605,50 @@ def generate_cheat_ground_truth(
                     continue
 
                 interior = cheat[1:-1, idx]
+                if interior.shape[0] == 0:
+                    continue
+
+                if generator is None:
+                    point_mask = torch.rand(
+                        (interior.shape[0],), device=device
+                    ) < 0.5
+                else:
+                    point_mask = (
+                        torch.rand(
+                            (interior.shape[0],),
+                            device=device,
+                            generator=generator,
+                        )
+                        < 0.5
+                    )
+
+                if not torch.any(point_mask):
+                    if generator is None:
+                        random_index = int(
+                            torch.randint(
+                                interior.shape[0], (1,), device=device
+                            ).item()
+                        )
+                    else:
+                        random_index = int(
+                            torch.randint(
+                                interior.shape[0],
+                                (1,),
+                                device=device,
+                                generator=generator,
+                            ).item()
+                        )
+                    point_mask[random_index] = True
+
+                selected = interior[point_mask]
                 noise = torch.randn(
-                    interior.shape,
+                    selected.shape,
                     device=device,
                     generator=generator,
                     dtype=dtype,
                 )
-                cheat[1:-1, idx] = interior + noise * amplitude
+                interior[point_mask] = selected + noise * amplitude
+                cheat[1:-1, idx] = interior
 
     return cheat
 
